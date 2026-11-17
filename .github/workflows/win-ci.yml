@@ -317,6 +317,13 @@ jobs:
           "$JAVA_HOME/bin/java" --patch-module "java.base=$(cygpath -w stage/lib/java_base_patch)" \
             -Dwinapk.android.root="$(cygpath -w "$RUNNER_TEMP")" \
             -cp "$(cygpath -w build/android-paths-test)" AndroidPathsTest
+      - name: Run the damage rectangle test
+        run: |
+          export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
+          cp="$(cygpath -w stage/lib/android-framework.jar);$(cygpath -w stage/lib/macapk-loader.jar)"
+          "$JAVA_HOME/bin/javac" -cp "$cp" -d build/damage-test windows/test/java/DamageRectTest.java
+          MACAPK_FRAMESPEED_DAMAGE=1 MACAPK_LOG_LEVEL=7 "$JAVA_HOME/bin/java" -Djava.awt.headless=true \
+            -cp "$cp;$(cygpath -w build/damage-test)" DamageRectTest
       - name: Run the camera2 still test
         run: |
           export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
@@ -358,6 +365,12 @@ jobs:
           MACAPK_LOG_LEVEL=7 "$JAVA_HOME/bin/java" -cp "$cp;$(cygpath -w build/applinks-test)" \
             com.macapk.loader.AppLinksTest "$(cygpath -w "$RUNNER_TEMP/applinks")" | tee applinks-test.log
           grep -q "ALL PASSED" applinks-test.log
+      - name: Run the scan record test
+        run: |
+          export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
+          cp="$(cygpath -w stage/lib/android-framework.jar)"
+          "$JAVA_HOME/bin/javac" -cp "$cp" -d build/scan-test windows/test/java/ScanRecordTest.java
+          "$JAVA_HOME/bin/java" -cp "$cp;$(cygpath -w build/scan-test)" ScanRecordTest
       - name: Run the cross-process Binder test
         # It starts copies of itself; if the parent dies they keep the pipe open.
         timeout-minutes: 5
