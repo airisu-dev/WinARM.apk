@@ -569,20 +569,6 @@ void JNICALL Cocoa_setPhoneSize(JNIEnv*, jclass, jint w, jint h) {
 
 jint JNICALL Cocoa_phoneWidth(JNIEnv*, jclass) { return g_phone_w; }
 jint JNICALL Cocoa_phoneHeight(JNIEnv*, jclass) { return g_phone_h; }
-// 60 unless WINAPK_GL_PRESENT=gpu: the view tree is drawn on the CPU at this rate.
-int display_hz() {
-    static const int hz = [] {
-        DEVMODEW mode{};
-        mode.dmSize = sizeof mode;
-        if (!gl_present_wanted() || !EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &mode)) return 60;
-        const int f = static_cast<int>(mode.dmDisplayFrequency);
-        return f >= 24 && f <= 480 ? f : 60;
-    }();
-    return hz;
-}
-
-jint JNICALL Cocoa_displayHz(JNIEnv*, jclass) { return display_hz(); }
-
 // Surface pixels per point. TouchDispatcher multiplies view points by it, and
 // the surface is the phone size at the device density, so the two must agree.
 // (On the Mac this is the display's scale, which equals the density on a
@@ -859,6 +845,7 @@ struct Renderer {
 };
 std::mutex g_renderer_lock;
 std::map<jlong, Renderer> g_renderers;
+std::atomic<int> g_gl_renderers{0};  // GL views among them (display_hz)
 std::vector<jlong> g_released_gl_views;  // pbuffers for the render thread to drop
 
 // The surface is the phone size in pixels, at the density the Java side uses
@@ -1260,13 +1247,46 @@ void pull_guest_layer_z(JNIEnv* env) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
+// The window's monitor's refresh rate, asked again every half second
+// (EnumDisplaySettingsW asks the driver).
+int monitor_hz() {
+    static std::atomic<int> hz{60};
+    static std::atomic<unsigned long long> asked{0};
+    const unsigned long long now = GetTickCount64(), then = asked.load();
+    if (then != 0 && now - then < 500) return hz;
+    asked = now;  // a race only asks twice
+    HMONITOR monitor = MonitorFromWindow(static_cast<HWND>(window_handle()), MONITOR_DEFAULTTONEAREST);
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof info;
+    DEVMODEW mode{};
+    mode.dmSize = sizeof mode;
+    if (monitor && GetMonitorInfoW(monitor, &info) &&
+        EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode)) {
+        const int f = static_cast<int>(mode.dmDisplayFrequency);
+        hz = f >= 24 && f <= 480 ? f : 60;
+    }
+    return hz;
+}
+
+// The tick's rate and Display.getRefreshRate(). The view tree is drawn on the CPU
+// every tick, so it stays at 60 unless GPU present is wanted and GL content (a GL
+// view or the app's native window) is on screen.
+int display_hz() {
+    if (!gl_present_wanted() || (g_gl_renderers.load() == 0 && !guest_live())) return 60;
+    return monitor_hz();
+}
+
+jint JNICALL Cocoa_displayHz(JNIEnv*, jclass) { return display_hz(); }
+
 // The tick, at display_hz(). Sleep(16) ran at the scheduler's granularity -- 15.6 ms
 // by default, so a tick every one or two of those: 40 to 60 frames a second,
 // unevenly. A high-resolution waitable timer (Windows 10 1803 and later;
 // the multimedia timer's 1 ms resolution stands in before that) wakes the
-// thread at the next multiple of 1/60 s. A tick that overran its slot starts
-// the next one at once; it is not made up for.
-// With WINAPK_GL_PRESENT=gpu, ticks fall just after vblank.
+// thread at the next multiple of the tick's period. A tick that overran its
+// slot starts the next one at once; it is not made up for.
+// With GPU present wanted, ticks fall just after vblank when the period is a
+// whole number of DWM's (primary monitor) refresh periods; otherwise, e.g. 60 on
+// 144 Hz, snapping would run fast.
 class TickClock {
 public:
     TickClock() {
@@ -1279,8 +1299,9 @@ public:
         }
     }
     void wait() {
-        next_.QuadPart += freq_.QuadPart / display_hz();
-        if (gl_present_wanted()) to_vblank();
+        const int64_t period = freq_.QuadPart / display_hz();
+        next_.QuadPart += period;
+        if (gl_present_wanted()) to_vblank(period);
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
         if (next_.QuadPart <= now.QuadPart) {
@@ -1299,11 +1320,13 @@ public:
     }
 
 private:
-    void to_vblank() {
+    void to_vblank(int64_t period) {
         DWM_TIMING_INFO ti{};
         ti.cbSize = sizeof ti;
         if (FAILED(DwmGetCompositionTimingInfo(nullptr, &ti)) || ti.qpcRefreshPeriod == 0) return;
         const int64_t p = static_cast<int64_t>(ti.qpcRefreshPeriod), v = static_cast<int64_t>(ti.qpcVBlank);
+        const int64_t n = (period + p / 2) / p, off = period - n * p;
+        if (n == 0 || off > p / 8 || off < -p / 8) return;  // not a whole number of vblanks
         const int64_t d = next_.QuadPart - v;
         const int64_t k = (d >= 0 ? d + p / 2 : d - p / 2) / p;
         next_.QuadPart = v + k * p + freq_.QuadPart / 2000;  // 0.5 ms after the nearest vblank
@@ -1430,6 +1453,7 @@ void JNICALL Cocoa_setRenderer(JNIEnv* env, jclass, jlong view, jobject callback
     std::lock_guard<std::mutex> hold(g_renderer_lock);
     auto it = g_renderers.find(view);
     if (it != g_renderers.end()) {
+        if (it->second.gl) --g_gl_renderers;
         env->DeleteGlobalRef(it->second.callbacks);
         g_renderers.erase(it);
     }
@@ -1437,6 +1461,7 @@ void JNICALL Cocoa_setRenderer(JNIEnv* env, jclass, jlong view, jobject callback
     Renderer r;
     r.callbacks = env->NewGlobalRef(callbacks);
     r.gl = is_gl_view(view);
+    if (r.gl) ++g_gl_renderers;
     g_renderers[view] = r;
     if (!started) {
         started = true;
@@ -1451,7 +1476,10 @@ void JNICALL Cocoa_releaseRenderer(JNIEnv* env, jclass, jlong view) {
     std::lock_guard<std::mutex> hold(g_renderer_lock);
     auto it = g_renderers.find(view);
     if (it == g_renderers.end()) return;
-    if (it->second.gl) g_released_gl_views.push_back(view);
+    if (it->second.gl) {
+        g_released_gl_views.push_back(view);
+        --g_gl_renderers;
+    }
     env->DeleteGlobalRef(it->second.callbacks);
     g_renderers.erase(it);
 }
