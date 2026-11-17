@@ -212,9 +212,9 @@ app that does not draw gets one more try, then the exit code is 1.
 Every pull request that touches the runtime boots the smoke set,
 `test/compat/smoke.txt` (one app of each kind), with `--require-drew`, less
 Klooni, whose libGDX uses x18: the job checks instead that it ends and its log
-says why. The whole corpus runs only by hand (Run workflow, "Full
-compatibility sweep"), as four shards; it fails nothing. Some apps of
-`apps.txt` ship no arm64-v8a code and are expected not to start.
+says why. The whole corpus runs by hand (Run workflow, "Full compatibility
+sweep") or on a pull request with the `full-sweep` label, as four shards; it
+fails nothing. Every app of `apps.txt` ships arm64-v8a code or none.
 
 `test/compat/startbench.py` measures start times and memory per app and
 configuration.
@@ -223,7 +223,7 @@ configuration.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
+| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the sweep by hand or with the `full-sweep` label. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
 | `.github/workflows/win-release.yml` | By hand, with a tag such as `v0.2.0-preview` | Builds and smoke-tests on `windows-11-arm`, then publishes `Win.apk-Setup-arm64.exe` and `Win.apk-windows-arm64.zip` as a pre-release with `package/RELEASE_NOTES.md` as the notes |
 
 Inno Setup only packs files, so the packaging jobs run on `windows-latest`.
