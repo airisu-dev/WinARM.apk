@@ -4,8 +4,9 @@
 # https://f-droid.org/repo/<package>_<versionCode>.apk (or /archive/ once
 # F-Droid retires the version).
 # Every pin is a build an ARM64 PC can run: arm64-v8a code or none (checked
-# against F-Droid's index 2026-11-17). First full sweep on windows-11-arm,
-# 2026-11-17: 77 of 92 drew (10 blank, 1 no frame, 4 crashed).
+# against F-Droid's index 2026-11-17). Full sweep on windows-11-arm, 2026-11-17:
+# 88 of 92 drew. Crashed: LocalSend (Flutter), VLC and Tiny Wheels (JNI_OnLoad),
+# Klooni (x18, refused).
 #
 # Without native libraries, selected 2026-10-20 from 44 candidates:
 com.github.muellerma.coffee 47
