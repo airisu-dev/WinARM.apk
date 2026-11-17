@@ -20,8 +20,9 @@ void gl_present_stop();
 // as a frame of shown_w x shown_h.
 bool gl_present_frame(void* share, int w, int h, int shown_w, int shown_h);
 
-// The view tree's frame, straight alpha ARGB. No-op while inactive.
-void gl_present_tree(const uint32_t* argb, int w, int h);
+// The view tree's frame, straight alpha ARGB. False while inactive or when it
+// did not reach the window.
+bool gl_present_tree(const uint32_t* argb, int w, int h);
 void gl_present_tree_clear();
 
 // A black GL layer, for content that is not a GL view.

@@ -250,6 +250,48 @@ void stop_locked() {
     g_dcomp->Commit();
 }
 
+// A lost device (a driver reset) is not made again: the rest of the run is read back.
+void lose(HRESULT hr) {
+    fail("the GPU device was lost", hr);
+    g_active = false;
+    while (!g_surfaces.empty()) drop_surface(g_surfaces.begin());
+    for (auto& [handle, tex] : g_sources) tex->Release();
+    g_sources.clear();
+    release(g_gl.chain);
+    release(g_tree.chain);
+    release(g_tree_tex);
+    g_tree_last.clear();
+    g_gl_base = false;
+    g_gl.w = g_gl.h = g_tree.w = g_tree.h = 0;
+    g_target->SetRoot(nullptr);
+    g_dcomp->Commit();
+    release(g_above);
+    release(g_below);
+    release(g_tree.visual);
+    release(g_gl.visual);
+    release(g_root);
+    release(g_target);
+    release(g_dcomp);
+    release(g_factory);
+    release(g_ctx);
+    release(g_device);
+}
+
+// False when the frame did not reach the window: the caller reads it back.
+bool present(IDXGISwapChain1* chain) {
+    const HRESULT hr = chain->Present(0, 0);
+    if (SUCCEEDED(hr)) return true;  // DXGI_STATUS_OCCLUDED and the like too
+    const HRESULT reason = g_device->GetDeviceRemovedReason();
+    if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET || FAILED(reason)) {
+        lose(FAILED(reason) ? reason : hr);
+        return false;
+    }
+    static bool told = false;
+    if (!told) fail("Present", hr);
+    told = true;
+    return false;
+}
+
 }  // namespace
 
 // WINAPK_GL_PRESENT=readback turns the GPU layers off, =on on (the launcher
@@ -309,7 +351,7 @@ bool gl_present_frame(void* share, int w, int h, int shown_w, int shown_h) {
         g_ctx->CopySubresourceRegion(back, 0, 0, 0, 0, src, 0, &box);
     }
     back->Release();
-    g_gl.chain->Present(0, 0);
+    if (!present(g_gl.chain)) return false;
     g_gl_base = false;
     activate();
     if (g_gl.shown_w != shown_w || g_gl.shown_h != shown_h) {
@@ -335,11 +377,11 @@ void gl_present_tree_clear() {
 }
 
 // Uploads only the rectangle that changed, into a texture the buffer is copied from.
-void gl_present_tree(const uint32_t* argb, int w, int h) {
+bool gl_present_tree(const uint32_t* argb, int w, int h) {
     std::lock_guard<std::mutex> hold(g_lock);
-    if (!g_active || w <= 0 || h <= 0) return;
+    if (!g_active || w <= 0 || h <= 0) return false;
     bool changed = false;
-    if (!ensure_chain(g_tree, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, true, &changed)) return;
+    if (!ensure_chain(g_tree, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, true, &changed)) return false;
     const size_t n = static_cast<size_t>(w) * h;
     int l = 0, t = 0, r = w, b = h;
     if (!g_tree_tex || g_tree_tex_w != w || g_tree_tex_h != h || changed) {
@@ -352,7 +394,7 @@ void gl_present_tree(const uint32_t* argb, int w, int h) {
         desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
         desc.SampleDesc.Count = 1;
         desc.Usage = D3D11_USAGE_DEFAULT;
-        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &g_tree_tex))) return;
+        if (FAILED(g_device->CreateTexture2D(&desc, nullptr, &g_tree_tex))) return false;
         g_tree_tex_w = w;
         g_tree_tex_h = h;
         g_tree_last.assign(argb, argb + n);
@@ -363,7 +405,7 @@ void gl_present_tree(const uint32_t* argb, int w, int h) {
             return std::memcmp(argb + at, g_tree_last.data() + at, row) == 0;
         };
         while (t < h && same(t)) ++t;
-        if (t == h) return;
+        if (t == h) return true;
         while (same(b - 1)) --b;
         l = w;
         r = 0;
@@ -398,12 +440,13 @@ void gl_present_tree(const uint32_t* argb, int w, int h) {
     const D3D11_BOX box{static_cast<UINT>(l), static_cast<UINT>(t), 0, static_cast<UINT>(r), static_cast<UINT>(b), 1};
     g_ctx->UpdateSubresource(g_tree_tex, 0, &box, g_premul.data(), static_cast<UINT>(rw) * 4, 0);
     ID3D11Texture2D* back = nullptr;
-    if (FAILED(g_tree.chain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) return;
+    if (FAILED(g_tree.chain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) return false;
     g_ctx->CopyResource(back, g_tree_tex);
     back->Release();
-    g_tree.chain->Present(0, 0);
+    if (!present(g_tree.chain)) return false;
     place(g_tree, &changed);
     if (changed) g_dcomp->Commit();
+    return true;
 }
 
 bool gl_present_base(int w, int h) {
@@ -417,7 +460,7 @@ bool gl_present_base(int w, int h) {
         const uint32_t black = 0xff000000u;
         g_ctx->UpdateSubresource(back, 0, nullptr, &black, 4, 0);
         back->Release();
-        g_gl.chain->Present(0, 0);
+        if (!present(g_gl.chain)) return false;
         g_gl_base = true;
     }
     activate();
@@ -455,7 +498,7 @@ bool gl_present_surface(int key, const uint32_t* argb, int w, int h) {
     if (FAILED(s.layer.chain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) return false;
     g_ctx->UpdateSubresource(back, 0, nullptr, argb, static_cast<UINT>(w) * 4, 0);
     back->Release();
-    s.layer.chain->Present(0, 0);
+    if (!present(s.layer.chain)) return false;
     if (changed) g_dcomp->Commit();
     return true;
 }

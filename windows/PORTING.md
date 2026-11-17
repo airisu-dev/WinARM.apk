@@ -161,6 +161,7 @@ forbids are escaped.
 - On a GPU, GL frames, the view tree and SurfaceView frames reach the window as
   DirectComposition layers (`host/gl/gl_present.h`); without one (WARP,
   SwiftShader) or with "Enable GPU rendering" off, the window is painted from a
-  readback of every frame. CI has no GPU, so only the readback runs there.
+  readback of every frame, as it is for the rest of a run once the GPU device
+  is lost (a driver reset). CI has no GPU, so only the readback runs there.
   Partial redraw (`MACAPK_FRAMESPEED_DAMAGE=1`) is off by default.
 - No in-app purchases, Play Integrity or Vulkan; OpenSL ES is a stub.

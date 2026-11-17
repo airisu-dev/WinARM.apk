@@ -1062,8 +1062,7 @@ bool compose_on_gpu(JNIEnv* env) {
         at.push_back(p);
     }
     gl_present_surfaces_place(at.data(), static_cast<int>(at.size()), W, H);
-    gl_present_tree(g_comp_tree.data(), W, H);
-    return true;
+    return gl_present_tree(g_comp_tree.data(), W, H);
 }
 
 // Builds the composite from what is stored and presents it. The size is the
@@ -1126,10 +1125,8 @@ void composite_tree_frame(JNIEnv* env, const uint32_t* argb, int w, int h) {
         g_comp_tree_w = w;
         g_comp_tree_h = h;
     }
-    if (is_gl_view(g_content_view.load()) && !g_have_surfaces.load() && gl_present_active()) {
-        gl_present_tree(argb, w, h);
-        return;
-    }
+    // False when GPU present is off or the device was just lost.
+    if (is_gl_view(g_content_view.load()) && !g_have_surfaces.load() && gl_present_tree(argb, w, h)) return;
     compose_and_present(env);
 }
 
