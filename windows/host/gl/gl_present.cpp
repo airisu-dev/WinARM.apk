@@ -415,6 +415,13 @@ bool gl_present_active() {
 }
 
 bool gl_present_frame(void* share, int w, int h, int shown_w, int shown_h) {
+    // Without a current context glFlush does nothing and the copy may read a half-drawn frame.
+    if (eglGetCurrentContext() == EGL_NO_CONTEXT) {
+        static bool told = false;
+        if (!told) std::fprintf(stderr, "[win.apk] GL present: no current context; frames are read back\n");
+        told = true;
+        return false;
+    }
     const Ready ready = await_ready([] { return &g_gl; });
     std::lock_guard<std::mutex> hold(g_lock);
     bank(&g_gl, ready);
