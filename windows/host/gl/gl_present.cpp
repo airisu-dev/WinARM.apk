@@ -609,7 +609,11 @@ void gl_present_surfaces_place(const SurfacePlace* places, int n, int tree_w, in
         changed = true;
     }
     int d[4], b[4];
-    if (tree_w <= 0 || tree_h <= 0 || !window_layer_rect(tree_w, tree_h, d, b)) return;
+    if (tree_w <= 0 || tree_h <= 0 || !window_layer_rect(tree_w, tree_h, d, b)) {
+        // Dropped visuals stay on screen until a commit.
+        if (changed) g_dcomp->Commit();
+        return;
+    }
     const float sx = static_cast<float>(d[2] - d[0]) / static_cast<float>(tree_w);
     const float sy = static_cast<float>(d[3] - d[1]) / static_cast<float>(tree_h);
     for (int i = 0; i < n; ++i) {
