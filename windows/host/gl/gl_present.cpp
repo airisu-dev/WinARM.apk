@@ -93,7 +93,9 @@ void drop_chain(Layer& l) {
     l.owed = false;
 }
 
-// Once, under g_lock.
+void release_all();
+
+// Once, under g_lock. A failure releases all it made: it is not tried again.
 bool setup() {
     if (g_tried) return g_dcomp != nullptr;
     g_tried = true;
@@ -128,6 +130,7 @@ bool setup() {
             desc.DeviceId == 0x8c) {
             release(adapter);
             release(dxgi);
+            release_all();
             return fail("a software renderer");
         }
         hr = adapter->GetParent(__uuidof(IDXGIFactory2), reinterpret_cast<void**>(&g_factory));
@@ -150,7 +153,7 @@ bool setup() {
     if (SUCCEEDED(hr)) hr = g_root->AddVisual(g_above, TRUE, g_tree.visual);
     if (SUCCEEDED(hr)) hr = g_target->SetRoot(g_root);
     if (FAILED(hr)) {
-        release(g_dcomp);
+        release_all();
         return fail("DirectComposition", hr);
     }
     g_gl.visual->SetBitmapInterpolationMode(DCOMPOSITION_BITMAP_INTERPOLATION_MODE_LINEAR);
@@ -281,9 +284,8 @@ void stop_locked() {
     g_dcomp->Commit();
 }
 
-// A lost device (a driver reset) is not made again: the rest of the run is read back.
-void lose(HRESULT hr) {
-    fail("the GPU device was lost", hr);
+// Everything setup() and the frames made; safe on a partly done setup().
+void release_all() {
     g_active = false;
     while (!g_surfaces.empty()) drop_surface(g_surfaces.begin());
     for (auto& [handle, tex] : g_sources) tex->Release();
@@ -294,8 +296,8 @@ void lose(HRESULT hr) {
     g_tree_last.clear();
     g_gl_base = false;
     g_gl.w = g_gl.h = g_tree.w = g_tree.h = 0;
-    g_target->SetRoot(nullptr);
-    g_dcomp->Commit();
+    if (g_target) g_target->SetRoot(nullptr);
+    if (g_dcomp) g_dcomp->Commit();
     release(g_above);
     release(g_below);
     release(g_tree.visual);
@@ -306,6 +308,12 @@ void lose(HRESULT hr) {
     release(g_factory);
     release(g_ctx);
     release(g_device);
+}
+
+// A lost device (a driver reset) is not made again: the rest of the run is read back.
+void lose(HRESULT hr) {
+    fail("the GPU device was lost", hr);
+    release_all();
 }
 
 // False when the frame did not reach the window: the caller reads it back.
