@@ -75,6 +75,8 @@ struct WindowSurface {
     // so it is never replaced by a larger one.
     bool fixed = false;
     void* share = nullptr;  // of `real`
+    // `real` gave no share handle: not asked again until grow replaces it.
+    bool share_failed = false;
 };
 
 // The window's size: what the app should draw (eglQuerySurface) and what the
@@ -147,6 +149,7 @@ void grow(EGLDisplay dpy, EGLSurface handle, WindowSurface& ws) {
                  side, w, h);
     ws.real = s;
     ws.share = nullptr;
+    ws.share_failed = false;
     ws.side = side;
 }
 
@@ -293,11 +296,14 @@ WINAPK_GUEST_ABI EGLBoolean guest_eglSwapBuffers(EGLDisplay dpy, EGLSurface surf
     if (eglGetCurrentSurface(EGL_DRAW) != ws.real) return EGL_TRUE;
     int w = 0, h = 0;
     live_size(ws, &w, &h);
-    if (!ws.share) {
+    if (!ws.share && !ws.share_failed) {
         ws.share = gl_surface_share_handle(ws.real);
         std::lock_guard<std::mutex> hold(g_lock);
         auto it = g_window_surfaces.find(surface);
-        if (it != g_window_surfaces.end() && it->second.real == ws.real) it->second.share = ws.share;
+        if (it != g_window_surfaces.end() && it->second.real == ws.real) {
+            it->second.share = ws.share;
+            it->second.share_failed = !ws.share;
+        }
     }
     if (!guest_frame_present_gpu(ws.share, w, h)) {
         thread_local std::vector<uint32_t> argb;
