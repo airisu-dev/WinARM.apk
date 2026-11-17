@@ -1438,6 +1438,8 @@ DWORD WINAPI render_thread(void*) {
             }
             env->DeleteLocalRef(callbacks);
         }
+        // Frames a GPU layer could not take in time.
+        gl_present_retry();
         if (exit_after > 0 && g_frames > 0 && ++ticks_since_first >= exit_after) {
             std::fprintf(stderr,
                          "[win.apk] %ld frames presented in %ld display frames; exiting as "

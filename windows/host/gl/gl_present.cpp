@@ -11,7 +11,7 @@
 
 #include <d3d11_4.h>
 #include <dcomp.h>
-#include <dxgi1_2.h>
+#include <dxgi1_3.h>
 
 #include <GLES3/gl3.h>
 #include <EGL/egl.h>
@@ -40,9 +40,21 @@ struct Layer {
     bool bottom_up = false;  // GL's row order
     RECT placed{};
     int shown_w = 0, shown_h = 0;  // placed as a frame of this size (0: its own)
+    // Signalled when Present would not block (frame latency 1); waited on outside g_lock.
+    HANDLE ready = nullptr;
+    uint64_t id = 0;           // the chain `ready` belongs to
+    int credits = 0;           // counts of `ready` waited for, not yet spent on a Present
+    bool owed = false;         // the back buffer holds a frame not yet presented
+    ULONGLONG owed_since = 0;  // GetTickCount64
 };
 
+// A stalled GPU must not hold the render threads: past this the frame is owed.
+constexpr DWORD kReadyWaitMs = 100;
+// An owed frame older than this is presented anyway: the waitable object is only a throttle.
+constexpr ULONGLONG kOwedMaxMs = 1000;
+
 std::mutex g_lock;
+uint64_t g_chain_ids = 0;
 bool g_tried = false, g_active = false;
 ID3D11Device* g_device = nullptr;
 ID3D11DeviceContext* g_ctx = nullptr;
@@ -71,6 +83,14 @@ bool fail(const char* what, HRESULT hr = S_OK) {
     std::fprintf(stderr, "[win.apk] GL present: %s (0x%08lx); frames are read back\n", what,
                  static_cast<unsigned long>(hr));
     return false;
+}
+
+void drop_chain(Layer& l) {
+    release(l.chain);
+    if (l.ready) CloseHandle(l.ready);
+    l.ready = nullptr;
+    l.credits = 0;
+    l.owed = false;
 }
 
 // Once, under g_lock.
@@ -140,13 +160,16 @@ bool setup() {
 
 bool ensure_chain(Layer& l, int w, int h, DXGI_FORMAT format, bool alpha, bool* changed) {
     if (l.chain && l.w == w && l.h == h && l.format == format) return true;
-    if (l.chain && l.format == format && SUCCEEDED(l.chain->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, 0))) {
+    // ResizeBuffers must keep the chain's flags.
+    constexpr UINT kFlags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    if (l.chain && l.format == format && SUCCEEDED(l.chain->ResizeBuffers(0, w, h, DXGI_FORMAT_UNKNOWN, kFlags))) {
         l.placed = RECT{};
         l.w = w;
         l.h = h;
+        l.owed = false;  // the buffers are new; the caller writes one
         return true;
     }
-    release(l.chain);
+    drop_chain(l);
     DXGI_SWAP_CHAIN_DESC1 desc{};
     desc.Width = w;
     desc.Height = h;
@@ -157,8 +180,16 @@ bool ensure_chain(Layer& l, int w, int h, DXGI_FORMAT format, bool alpha, bool* 
     desc.Scaling = DXGI_SCALING_STRETCH;
     desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
     desc.AlphaMode = alpha ? DXGI_ALPHA_MODE_PREMULTIPLIED : DXGI_ALPHA_MODE_IGNORE;
+    desc.Flags = kFlags;
     HRESULT hr = g_factory->CreateSwapChainForComposition(g_device, &desc, nullptr, &l.chain);
     if (FAILED(hr)) return fail("CreateSwapChainForComposition", hr);
+    IDXGISwapChain2* chain2 = nullptr;
+    if (SUCCEEDED(l.chain->QueryInterface(__uuidof(IDXGISwapChain2), reinterpret_cast<void**>(&chain2)))) {
+        chain2->SetMaximumFrameLatency(1);
+        l.ready = chain2->GetFrameLatencyWaitableObject();
+        chain2->Release();
+    }
+    l.id = ++g_chain_ids;
     l.visual->SetContent(l.chain);
     l.w = w;
     l.h = h;
@@ -230,7 +261,7 @@ void activate() {
 void drop_surface(std::map<int, Surface>::iterator it) {
     Surface& s = it->second;
     if (s.attached) (s.on_top ? g_above : g_below)->RemoveVisual(s.layer.visual);
-    release(s.layer.chain);
+    drop_chain(s.layer);
     release(s.layer.visual);
     g_surfaces.erase(it);
 }
@@ -240,8 +271,8 @@ void stop_locked() {
     g_active = false;
     g_gl.visual->SetContent(nullptr);
     g_tree.visual->SetContent(nullptr);
-    release(g_gl.chain);
-    release(g_tree.chain);
+    drop_chain(g_gl);
+    drop_chain(g_tree);
     release(g_tree_tex);
     g_tree_last.clear();
     while (!g_surfaces.empty()) drop_surface(g_surfaces.begin());
@@ -257,8 +288,8 @@ void lose(HRESULT hr) {
     while (!g_surfaces.empty()) drop_surface(g_surfaces.begin());
     for (auto& [handle, tex] : g_sources) tex->Release();
     g_sources.clear();
-    release(g_gl.chain);
-    release(g_tree.chain);
+    drop_chain(g_gl);
+    drop_chain(g_tree);
     release(g_tree_tex);
     g_tree_last.clear();
     g_gl_base = false;
@@ -290,6 +321,57 @@ bool present(IDXGISwapChain1* chain) {
     if (!told) fail("Present", hr);
     told = true;
     return false;
+}
+
+// await_ready's answer: chain `id` can take a frame (ok), or the wait timed out.
+struct Ready {
+    uint64_t id = 0;
+    bool ok = false;
+};
+
+// Waits (bounded, without g_lock) on a duplicate of the layer's handle, so the
+// chain may be released meanwhile. `find` runs under g_lock. No wait when the
+// layer already holds a count.
+template <typename Find>
+Ready await_ready(Find find) {
+    Ready r;
+    HANDLE h = nullptr;
+    {
+        std::lock_guard<std::mutex> hold(g_lock);
+        const Layer* l = find();
+        if (!l || !l->ready || l->credits > 0) return r;
+        if (!DuplicateHandle(GetCurrentProcess(), l->ready, GetCurrentProcess(), &h, SYNCHRONIZE, FALSE, 0)) return r;
+        r.id = l->id;
+    }
+    r.ok = WaitForSingleObject(h, kReadyWaitMs) == WAIT_OBJECT_0;
+    CloseHandle(h);
+    return r;
+}
+
+// Right after taking g_lock: keeps the count a wait took until a Present spends
+// it, so an early return does not lose it.
+void bank(Layer* l, const Ready& r) {
+    if (l && r.ok && r.id == l->id && l->chain) ++l->credits;
+}
+
+// Presents the back buffer, or owes it while the chain is full; false only when
+// Present failed. Each Present spends one count (a new chain starts with one),
+// except an owed frame past kOwedMaxMs.
+bool show(Layer& l) {
+    const ULONGLONG now = GetTickCount64();
+    bool go = !l.ready;
+    if (!go && l.credits > 0) {
+        --l.credits;
+        go = true;
+    }
+    if (!go) go = WaitForSingleObject(l.ready, 0) == WAIT_OBJECT_0 || (l.owed && now - l.owed_since > kOwedMaxMs);
+    if (!go) {
+        if (!l.owed) l.owed_since = now;
+        l.owed = true;
+        return true;
+    }
+    l.owed = false;
+    return present(l.chain);
 }
 
 }  // namespace
@@ -325,7 +407,9 @@ bool gl_present_active() {
 }
 
 bool gl_present_frame(void* share, int w, int h, int shown_w, int shown_h) {
+    const Ready ready = await_ready([] { return &g_gl; });
     std::lock_guard<std::mutex> hold(g_lock);
+    bank(&g_gl, ready);
     if (!share || w <= 0 || h <= 0 || !setup()) return false;
     ID3D11Texture2D* src = source(share);
     if (!src) return false;
@@ -351,7 +435,7 @@ bool gl_present_frame(void* share, int w, int h, int shown_w, int shown_h) {
         g_ctx->CopySubresourceRegion(back, 0, 0, 0, 0, src, 0, &box);
     }
     back->Release();
-    if (!present(g_gl.chain)) return false;
+    if (!show(g_gl)) return false;
     g_gl_base = false;
     activate();
     if (g_gl.shown_w != shown_w || g_gl.shown_h != shown_h) {
@@ -369,7 +453,7 @@ void gl_present_tree_clear() {
     std::lock_guard<std::mutex> hold(g_lock);
     if (!g_tree.chain) return;
     g_tree.visual->SetContent(nullptr);
-    release(g_tree.chain);
+    drop_chain(g_tree);
     release(g_tree_tex);
     g_tree_last.clear();
     g_tree.w = g_tree.h = 0;
@@ -378,7 +462,9 @@ void gl_present_tree_clear() {
 
 // Uploads only the rectangle that changed, into a texture the buffer is copied from.
 bool gl_present_tree(const uint32_t* argb, int w, int h) {
+    const Ready ready = await_ready([] { return &g_tree; });
     std::lock_guard<std::mutex> hold(g_lock);
+    bank(&g_tree, ready);
     if (!g_active || w <= 0 || h <= 0) return false;
     bool changed = false;
     if (!ensure_chain(g_tree, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, true, &changed)) return false;
@@ -405,7 +491,7 @@ bool gl_present_tree(const uint32_t* argb, int w, int h) {
             return std::memcmp(argb + at, g_tree_last.data() + at, row) == 0;
         };
         while (t < h && same(t)) ++t;
-        if (t == h) return true;
+        if (t == h) return !g_tree.owed || show(g_tree);
         while (same(b - 1)) --b;
         l = w;
         r = 0;
@@ -443,7 +529,7 @@ bool gl_present_tree(const uint32_t* argb, int w, int h) {
     if (FAILED(g_tree.chain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) return false;
     g_ctx->CopyResource(back, g_tree_tex);
     back->Release();
-    if (!present(g_tree.chain)) return false;
+    if (!show(g_tree)) return false;
     place(g_tree, &changed);
     if (changed) g_dcomp->Commit();
     return true;
@@ -460,7 +546,7 @@ bool gl_present_base(int w, int h) {
         const uint32_t black = 0xff000000u;
         g_ctx->UpdateSubresource(back, 0, nullptr, &black, 4, 0);
         back->Release();
-        if (!present(g_gl.chain)) return false;
+        if (!show(g_gl)) return false;
         g_gl_base = true;
     }
     activate();
@@ -482,7 +568,12 @@ bool gl_present_has_surface(int key) {
 }
 
 bool gl_present_surface(int key, const uint32_t* argb, int w, int h) {
+    const Ready ready = await_ready([key]() -> const Layer* {
+        auto it = g_surfaces.find(key);
+        return it == g_surfaces.end() ? nullptr : &it->second.layer;
+    });
     std::lock_guard<std::mutex> hold(g_lock);
+    if (auto it = g_surfaces.find(key); it != g_surfaces.end()) bank(&it->second.layer, ready);
     if (!g_active || w <= 0 || h <= 0) return false;
     Surface& s = g_surfaces[key];
     if (!s.layer.visual) {
@@ -498,7 +589,7 @@ bool gl_present_surface(int key, const uint32_t* argb, int w, int h) {
     if (FAILED(s.layer.chain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back)))) return false;
     g_ctx->UpdateSubresource(back, 0, nullptr, argb, static_cast<UINT>(w) * 4, 0);
     back->Release();
-    if (!present(s.layer.chain)) return false;
+    if (!show(s.layer)) return false;
     if (changed) g_dcomp->Commit();
     return true;
 }
@@ -552,6 +643,18 @@ void gl_present_surfaces_place(const SurfacePlace* places, int n, int tree_w, in
         changed = true;
     }
     if (changed) g_dcomp->Commit();
+}
+
+void gl_present_retry() {
+    std::lock_guard<std::mutex> hold(g_lock);
+    if (!g_active) return;
+    bool ok = !g_gl.owed || show(g_gl);
+    if (ok && g_tree.owed) ok = show(g_tree);
+    // A failed Present may have lost the device and emptied g_surfaces.
+    for (auto it = g_surfaces.begin(); ok && it != g_surfaces.end(); ++it) {
+        if (it->second.layer.owed) ok = show(it->second.layer);
+    }
+    if (!ok) stop_locked();
 }
 
 void gl_present_stop() {

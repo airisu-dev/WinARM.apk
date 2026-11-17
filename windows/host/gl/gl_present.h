@@ -2,7 +2,8 @@
 //
 // The GL frame (the content GL view's or a native window's pbuffer) is copied
 // on the GPU into a DirectComposition swap chain; the view tree and each
-// SurfaceView are layers of their own.
+// SurfaceView are layers of their own. Chains have a frame latency of 1 and are
+// waited on before the lock, so a Present never blocks the other layers.
 
 #pragma once
 
@@ -15,6 +16,9 @@ bool gl_present_wanted();
 bool gl_present_forced();
 bool gl_present_active();
 void gl_present_stop();
+// Presents frames a chain could not take in time. Called every tick, so a still
+// app's last frame shows too.
+void gl_present_retry();
 
 // The bottom-left w x h of the current pbuffer (its D3D11 share handle), placed
 // as a frame of shown_w x shown_h.
