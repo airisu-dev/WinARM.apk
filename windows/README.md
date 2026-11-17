@@ -231,9 +231,10 @@ app that does not draw gets one more try, then the exit code is 1.
 Every pull request that touches the runtime boots the smoke set,
 `test/compat/smoke.txt` (one app of each kind), with `--require-drew`. Klooni,
 whose libGDX uses x18, then runs once more with `WINAPK_ARM64_X18_REWRITE=0`: the
-job checks that it ends and its log says why. The whole corpus runs only by hand (Run workflow, "Full
-compatibility sweep"), as four shards; it fails nothing. Some apps of
-`apps.txt` ship no arm64-v8a code and are expected not to start.
+job checks that it ends and its log says why. The whole corpus runs by hand (Run
+workflow, "Full compatibility sweep") or on a pull request with the `full-sweep`
+label, as four shards; it fails nothing. Every app of `apps.txt` ships arm64-v8a
+code or none.
 
 `test/compat/startbench.py` measures start times and memory per app and
 configuration.
@@ -291,7 +292,7 @@ its fixture test, or a line of the API list it cannot read.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the API coverage report beside them (its summary in the run's page, the report as the `api-coverage` artifact); the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
+| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the API coverage report beside them (its summary in the run's page, the report as the `api-coverage` artifact); the sweep by hand or with the `full-sweep` label. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
 | `.github/workflows/win-release.yml` | By hand, with a dated tag such as `v26.1118.0-preview` | Builds and smoke-tests on `windows-11-arm`, then publishes `Win.apk-Setup-arm64.exe` and `Win.apk-windows-arm64.zip` as a pre-release with `package/RELEASE_NOTES.md` as the notes |
 
 Inno Setup only packs files, so the packaging jobs run on `windows-latest`.
