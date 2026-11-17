@@ -1,15 +1,17 @@
 # The smoke set: the apps every pull request boots (win-ci.yml, "App smoke test"),
-# one of each kind the corpus covers, all of which draw today. The run fails
-# when one of them no longer draws its first screen, so keep only apps that
-# reliably do; the whole corpus (apps.txt) runs only when asked for.
+# one of each kind the corpus covers, all of which drew in the full ARM64 sweep of
+# 2026-11-17. The run fails when one of them no longer draws its first screen, so
+# keep only apps that reliably do; the whole corpus (apps.txt) runs only when asked.
 # One package per line; each must be in apps.txt, which pins its version.
+# No Flutter app yet: LocalSend, the corpus's only one, does not start on ARM64.
 org.billthefarmer.editor            # Java, no native code
 org.fossify.notes                   # Kotlin, views
 com.jerboa                          # Compose
 name.boyle.chris.sgtpuzzles         # JNI C, Canvas
-dev.lonami.klooni                   # libGDX, OpenGL ES from Java
 se.voxelmanip.tensy                 # SDL, OpenGL ES from native code
-org.ppsspp.ppsspp                   # NativeActivity
+org.ppsspp.ppsspp                   # NativeActivity, a native game engine
+net.minetest.minetest               # SDL2 native game, OpenGL ES
+app.organicmaps                     # C++ map engine, OpenGL ES
 org.jitsi.meet                      # React Native (Hermes)
 org.jellyfin.mobile                 # WebView shell
-org.moire.opensudoku                # arm64-v8a only: the ARM translation
+dev.lonami.klooni                   # libGDX, uses x18: skipped here, checked to end and say why
