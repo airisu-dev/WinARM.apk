@@ -499,7 +499,13 @@ bool gl_present_tree(const uint32_t* argb, int w, int h) {
             return std::memcmp(argb + at, g_tree_last.data() + at, row) == 0;
         };
         while (t < h && same(t)) ++t;
-        if (t == h) return !g_tree.owed || show(g_tree);
+        if (t == h) {
+            // The window may have moved since; a failed show may have released everything.
+            if (g_tree.owed && !show(g_tree)) return false;
+            place(g_tree, &changed);
+            if (changed) g_dcomp->Commit();
+            return true;
+        }
         while (same(b - 1)) --b;
         l = w;
         r = 0;
