@@ -465,6 +465,36 @@ RECT client_app_rect(HWND hwnd) {
     return app_rect(client);
 }
 
+// What the render threads place frames by (window_layer_rect, window_mirrored,
+// window_present_rect), copied whole under a lock: a resize mid-frame gives the
+// old box or the new one, never a mix.
+struct BoxState {
+    HWND hwnd = nullptr;
+    bool rtl = false;
+    int phone_w = 0, phone_h = 0, orientation_lock = 0;
+    SIZE surface{};
+};
+std::mutex g_box_lock;
+BoxState g_box;
+
+// After every write to what BoxState copies.
+void publish_box() {
+    std::lock_guard<std::mutex> hold(g_box_lock);
+    g_box = BoxState{g_hwnd, g_rtl_window, g_phone_w, g_phone_h, g_orientation_lock, g_surface};
+}
+
+BoxState box_state() {
+    std::lock_guard<std::mutex> hold(g_box_lock);
+    return g_box;
+}
+
+// app_rect, from a copy.
+RECT box_app_rect(const BoxState& s, const RECT& client) {
+    const AppBox b = window_app_box(client.right, client.bottom, s.phone_w, s.phone_h, s.orientation_lock,
+                                    resizable_enabled(), letterbox_enabled());
+    return RECT{b.x, b.y, b.x + b.w, b.y + b.h};
+}
+
 // ---- the app follows the window -------------------------------------------
 //
 // A window the user resizes -- an edge dragged, maximized, snapped -- is a
@@ -532,6 +562,7 @@ bool follow_client(HWND hwnd) {
         g_normal_h = h;
     }
     g_surface = SIZE{pw, ph};
+    publish_box();
     g_followed_at = GetTickCount64();
     if (!g_in_size_move) {
         std::fprintf(stderr, "[win.apk] window resized: the app's display is %dx%d dp, %dx%d px%s\n", w, h, pw, ph,
@@ -1628,6 +1659,7 @@ DWORD WINAPI ui_thread(void* param) {
                    window_dpi(g_hwnd), &wr, true);
     }
     if (g_hwnd) touch_setup(g_hwnd);
+    publish_box();
     args->ok = g_hwnd != nullptr;
     SetEvent(args->ready);
     if (!g_hwnd) return 1;
@@ -1866,10 +1898,14 @@ void window_set_phone_size(int phone_w, int phone_h) {
     g_phone_w = phone_w;
     g_phone_h = phone_h;
     g_surface = SIZE{client_px(phone_w, g_surface_scale), client_px(phone_h, g_surface_scale)};
+    publish_box();
     if (g_hwnd) PostMessageW(g_hwnd, kMsgResize, 0, 0);
 }
 
-void window_set_orientation_lock(int lock) { g_orientation_lock = lock; }
+void window_set_orientation_lock(int lock) {
+    g_orientation_lock = lock;
+    publish_box();
+}
 
 void* window_handle() { return g_hwnd; }
 
@@ -1932,12 +1968,13 @@ bool window_present_rect(const uint32_t* rows, int w, int h, int l, int t, int r
     }
     // Where paint() puts those pixels. Only for a frame shown pixel for pixel in
     // a window that is not mirrored; a scaled or stale one is painted whole.
+    const BoxState s = box_state();
     RECT client{};
     GetClientRect(g_hwnd, &client);
-    const RECT box = app_rect(client);
+    const RECT box = box_app_rect(s, client);
     const int bw = box.right - box.left, bh = box.bottom - box.top;
-    if (!g_rtl_window && bw > 0 && bh > 0 &&
-        window_frame_present(w, h, bw, bh, g_surface.cx, g_surface.cy) == FramePresent::kExact) {
+    if (!s.rtl && bw > 0 && bh > 0 &&
+        window_frame_present(w, h, bw, bh, s.surface.cx, s.surface.cy) == FramePresent::kExact) {
         const int x = box.left + (bw - w) / 2, y = box.top + (bh - h) / 2;
         const RECT changed{x + l, y + t, x + r, y + b};
         InvalidateRect(g_hwnd, &changed, FALSE);
@@ -1969,15 +2006,15 @@ void window_clear_overlay() {
 }
 
 bool window_layer_rect(int fw, int fh, int dst[4], int box[4]) {
-    HWND hwnd = g_hwnd;
-    if (!hwnd || fw <= 0 || fh <= 0) return false;
+    const BoxState s = box_state();  // a render thread's call
+    if (!s.hwnd || fw <= 0 || fh <= 0) return false;
     RECT client{};
-    GetClientRect(hwnd, &client);
-    const RECT b = app_rect(client);
+    GetClientRect(s.hwnd, &client);
+    const RECT b = box_app_rect(s, client);
     const int bw = b.right - b.left, bh = b.bottom - b.top;
     if (bw <= 0 || bh <= 0) return false;
     box[0] = b.left, box[1] = b.top, box[2] = b.right, box[3] = b.bottom;
-    const FramePresent how = window_frame_present(fw, fh, bw, bh, g_surface.cx, g_surface.cy);
+    const FramePresent how = window_frame_present(fw, fh, bw, bh, s.surface.cx, s.surface.cy);
     if (how == FramePresent::kScaled) {
         std::copy(box, box + 4, dst);
         return true;
@@ -1989,10 +2026,11 @@ bool window_layer_rect(int fw, int fh, int dst[4], int box[4]) {
 }
 
 bool window_mirrored(int* client_w) {
+    const BoxState s = box_state();
     RECT client{};
-    if (!g_hwnd || !GetClientRect(g_hwnd, &client)) return false;
+    if (!s.hwnd || !GetClientRect(s.hwnd, &client)) return false;
     *client_w = client.right;
-    return g_rtl_window;
+    return s.rtl;
 }
 
 void window_set_secure(bool secure) {
