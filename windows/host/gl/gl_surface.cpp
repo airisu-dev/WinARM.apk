@@ -13,6 +13,7 @@
 #include <EGL/eglext.h>
 
 #include "gl/gl_loader.h"
+#include "gl/gl_present.h"
 
 namespace winapk::host {
 
@@ -160,6 +161,7 @@ bool gl_frame_begin(long long view, int w, int h) {
     ViewSurface& s = g_surfaces[view];
     if (s.surface == EGL_NO_SURFACE || s.w != w || s.h != h) {
         if (s.surface != EGL_NO_SURFACE) {
+            gl_present_forget(s.share);
             eglMakeCurrent(g_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             eglDestroySurface(g_display, s.surface);
         }
@@ -229,6 +231,7 @@ void gl_view_release(long long view) {
     auto it = g_surfaces.find(view);
     if (it == g_surfaces.end()) return;
     if (it->second.surface != EGL_NO_SURFACE) {
+        gl_present_forget(it->second.share);
         eglMakeCurrent(g_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         eglDestroySurface(g_display, it->second.surface);
     }

@@ -65,7 +65,7 @@ IDCompositionVisual* g_root = nullptr;
 Layer g_gl{nullptr, nullptr, 0, 0, DXGI_FORMAT_UNKNOWN, true, {}}, g_tree;
 RECT g_clip{};
 int g_mirror = 0;  // the client width the root is mirrored across
-// The textures behind the last few pbuffer share handles.
+// The textures opened for pbuffer share handles; gl_present_forget drops one, the cap in source() bounds the rest.
 std::vector<std::pair<void*, ID3D11Texture2D*>> g_sources;
 std::vector<uint32_t> g_premul, g_tree_last;
 ID3D11Texture2D* g_tree_tex = nullptr;
@@ -655,6 +655,17 @@ void gl_present_surfaces_place(const SurfacePlace* places, int n, int tree_w, in
         changed = true;
     }
     if (changed) g_dcomp->Commit();
+}
+
+void gl_present_forget(void* share) {
+    if (!share) return;
+    std::lock_guard<std::mutex> hold(g_lock);
+    for (auto it = g_sources.begin(); it != g_sources.end(); ++it) {
+        if (it->first != share) continue;
+        it->second->Release();
+        g_sources.erase(it);
+        return;
+    }
 }
 
 void gl_present_retry() {

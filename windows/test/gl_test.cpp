@@ -13,6 +13,11 @@
 
 #include "gl/gl_surface.h"
 
+// gl_surface.cpp calls it; gl_present.cpp would pull in the window.
+namespace winapk::host {
+void gl_present_forget(void*) {}
+}  // namespace winapk::host
+
 namespace {
 
 int g_failures = 0;

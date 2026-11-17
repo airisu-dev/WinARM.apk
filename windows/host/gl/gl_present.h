@@ -23,6 +23,9 @@ void gl_present_retry();
 // The bottom-left w x h of the current pbuffer (its D3D11 share handle), placed
 // as a frame of shown_w x shown_h.
 bool gl_present_frame(void* share, int w, int h, int shown_w, int shown_h);
+// Before the pbuffer behind share is destroyed or replaced: drops the texture
+// opened for it, which a new pbuffer could otherwise find under the same handle.
+void gl_present_forget(void* share);
 
 // The view tree's frame, straight alpha ARGB. False while inactive or when it
 // did not reach the window.

@@ -35,6 +35,7 @@
 #include "winapk/guest_abi.h"
 
 #include "gl/gl_loader.h"
+#include "gl/gl_present.h"
 #include "gl/gl_surface.h"
 #include "native_window.h"
 
@@ -139,6 +140,8 @@ void grow(EGLDisplay dpy, EGLSurface handle, WindowSurface& ws) {
             return;
         }
     }
+    // Even when the old pbuffer is the app's own and lives on: it is not presented again.
+    gl_present_forget(ws.share);
     if (ws.real != handle) eglDestroySurface(dpy, ws.real);
     std::fprintf(stderr, "[win.apk] GL: the app's window surface grew to a %dx%d pbuffer for a %dx%d window\n", side,
                  side, w, h);
@@ -237,6 +240,7 @@ WINAPK_GUEST_ABI EGLBoolean guest_eglDestroySurface(EGLDisplay dpy, EGLSurface s
         std::lock_guard<std::mutex> hold(g_lock);
         auto it = g_window_surfaces.find(surface);
         if (it != g_window_surfaces.end()) {
+            gl_present_forget(it->second.share);
             if (it->second.real != surface) eglDestroySurface(dpy, it->second.real);
             g_window_surfaces.erase(it);
         }
