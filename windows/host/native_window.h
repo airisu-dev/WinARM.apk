@@ -30,6 +30,8 @@ const void* native_window_handle();
 // A frame from the app's native code for the window, 0xAARRGGBB rows, top row
 // first. Any thread (native_cocoa.cpp).
 void guest_frame_present(const uint32_t* argb, int w, int h);
+// The same, on the GPU from its pbuffer; false: read it back instead.
+bool guest_frame_present_gpu(void* share, int w, int h);
 
 // The window's content area in pixels, once the render thread has run; else
 // false (native_cocoa.cpp).

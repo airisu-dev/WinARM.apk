@@ -132,7 +132,8 @@ gets paths in any language whole.
 | `WINAPK_PHONE_SIZE=WxH`, `WINAPK_RESIZABLE=0`, `WINAPK_DENSITY=<dpi>` | The phone size in dp, letterboxing instead of resizing, the density the app sees |
 | `WINAPK_ABIS` | Overrides the ABI list an install picks (tests) |
 | `WINAPK_ARM64_ALLOW_X18=1` | Loads a library although it uses x18 as scratch (`include/winapk/arm64_x18.h`), to see what it does. The first exception or Windows call made while its value is in x18 ends the process |
-| `WINAPK_FRAME_TIMING=1` | Every 5 s, a `[frame-timing]` line with a GL view's fps and each step's mean |
+| `WINAPK_FRAME_TIMING=1` | Every 5 s, a `[frame-timing]` line with a GL view's fps and each step's mean (`compose` is the GPU copy and present when frames go to the window on the GPU) |
+| `WINAPK_GL_PRESENT=readback`, `on` or `gpu` | GL frames, the view tree and SurfaceView frames go to the window as DirectComposition layers with no readback (`host/gl/gl_present.h`), on by default on a Direct3D 11 GPU (Settings > Apps > "Enable GPU rendering", `GpuPresent`; an app's own choice is `library\<name>.gpu`). `readback` turns it off, `on` turns it on, `gpu` forces it on with WARP too. Not with `WINAPK_HEADLESS_FRAME` |
 | `WINAPK_TEST_WORKAREA=<w>x<h>[+<x>+<y>]` | Stands in for the monitor's work area, in pixels; `@file` reads it from a file at every fit |
 | `WINAPK_TEST_RESIZE=<w>x<h>` | A second after the first frame, resizes the window's client area (CI's "Boot an APK in a window") |
 | `WINAPK_TEST_ANDROID_ROOT=<dir>`, `WINAPK_TEST_JAVA_BASE_PATCH=<dir>` | `winapk-binder-test` only: its JVM's android root and java.base overlay |

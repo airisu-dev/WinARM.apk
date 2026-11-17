@@ -33,9 +33,11 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <shellapi.h>
+#include <dwmapi.h>
 
 #include "cds.h"
 #include "frame_timing.h"
+#include "gl/gl_present.h"
 #include "gl/gl_surface.h"
 #include "native_window.h"
 #include "win32_window.h"
@@ -567,7 +569,19 @@ void JNICALL Cocoa_setPhoneSize(JNIEnv*, jclass, jint w, jint h) {
 
 jint JNICALL Cocoa_phoneWidth(JNIEnv*, jclass) { return g_phone_w; }
 jint JNICALL Cocoa_phoneHeight(JNIEnv*, jclass) { return g_phone_h; }
-jint JNICALL Cocoa_displayHz(JNIEnv*, jclass) { return 60; }
+// 60 unless WINAPK_GL_PRESENT=gpu: the view tree is drawn on the CPU at this rate.
+int display_hz() {
+    static const int hz = [] {
+        DEVMODEW mode{};
+        mode.dmSize = sizeof mode;
+        if (!gl_present_wanted() || !EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &mode)) return 60;
+        const int f = static_cast<int>(mode.dmDisplayFrequency);
+        return f >= 24 && f <= 480 ? f : 60;
+    }();
+    return hz;
+}
+
+jint JNICALL Cocoa_displayHz(JNIEnv*, jclass) { return display_hz(); }
 
 // Surface pixels per point. TouchDispatcher multiplies view points by it, and
 // the surface is the phone size at the device density, so the two must agree.
@@ -868,6 +882,7 @@ bool check_tick_exception(JNIEnv* env) {
 void JNICALL Cocoa_exitProcess(JNIEnv*, jclass, jint code, jstring);
 
 void present_pixels(const uint32_t* argb, int w, int h);
+const std::wstring& headless_frame_path();
 
 // ---- the guest layer ---------------------------------------------------------
 //
@@ -880,6 +895,7 @@ void present_pixels(const uint32_t* argb, int w, int h);
 std::atomic<int> g_content_w{0}, g_content_h{0};
 std::atomic<int> g_guest_layer_z{0};
 std::atomic<unsigned long long> g_guest_last_ms{0};
+std::atomic<bool> g_gpu_guest{false};  // the GL layer shows the native window
 std::mutex g_tree_lock;
 std::vector<uint32_t> g_tree_frame;
 int g_tree_w = 0, g_tree_h = 0;
@@ -914,6 +930,7 @@ bool guest_live() {
 struct SurfaceLayer {
     std::vector<uint32_t> px;
     int w = 0, h = 0;
+    bool fresh = false;  // not yet uploaded to its GPU layer
 };
 std::mutex g_comp_lock;
 std::map<int, SurfaceLayer> g_surface_layers;
@@ -1005,10 +1022,55 @@ void blend_over(uint32_t* dst, const uint32_t* src, size_t n) {
     }
 }
 
+bool gpu_layers_allowed() {
+    return gl_present_wanted() && frame_presented() && headless_frame_path().empty() &&
+           !(g_have_surfaces.load() && g_guest_last_ms.load() != 0);
+}
+
+// The composite as GPU layers (gl_present.h). False: composed on the CPU.
+bool compose_on_gpu(JNIEnv* env) {
+    if (!gpu_layers_allowed() || g_guest_last_ms.load() != 0) return false;
+    const std::vector<LayerPlace> places = pull_layer_places(env);
+    std::lock_guard<std::mutex> hold(g_comp_lock);
+    for (const auto& pl : places) {
+        if (pl.packed == 0) g_surface_layers.erase(pl.key);
+    }
+    g_have_surfaces = !g_surface_layers.empty();
+    const int W = g_comp_tree_w, H = g_comp_tree_h;
+    if (W <= 0 || H <= 0 || g_comp_tree.empty()) return false;
+    if (is_gl_view(g_content_view.load())) {
+        if (!gl_present_active()) return false;
+    } else if (!gl_present_base(W, H)) {
+        return false;
+    }
+    for (auto& [key, layer] : g_surface_layers) {
+        if (layer.px.empty() || (!layer.fresh && gl_present_has_surface(key))) continue;
+        if (!gl_present_surface(key, layer.px.data(), layer.w, layer.h)) return false;
+        layer.fresh = false;
+    }
+    std::vector<SurfacePlace> at;
+    for (const auto& pl : places) {
+        if (pl.packed == 0) continue;
+        const auto u = static_cast<unsigned long long>(pl.packed);
+        SurfacePlace p{pl.key, 0, 0, 0, 0, pl.on_top, pl.shown()};
+        if (p.shown) {
+            p.x = static_cast<int16_t>((u >> 48) & 0xffff);
+            p.y = static_cast<int16_t>((u >> 32) & 0xffff);
+            p.w = static_cast<int>((u >> 16) & 0xffff);
+            p.h = static_cast<int>(u & 0xffff);
+        }
+        at.push_back(p);
+    }
+    gl_present_surfaces_place(at.data(), static_cast<int>(at.size()), W, H);
+    gl_present_tree(g_comp_tree.data(), W, H);
+    return true;
+}
+
 // Builds the composite from what is stored and presents it. The size is the
 // view tree's (the display surface the layer rects are given in), else the GL
 // frame's.
 void compose_and_present(JNIEnv* env) {
+    if (compose_on_gpu(env)) return;
     const std::vector<LayerPlace> places = pull_layer_places(env);
     std::lock_guard<std::mutex> hold(g_comp_lock);
     for (const auto& pl : places) {
@@ -1064,6 +1126,10 @@ void composite_tree_frame(JNIEnv* env, const uint32_t* argb, int w, int h) {
         g_comp_tree_w = w;
         g_comp_tree_h = h;
     }
+    if (is_gl_view(g_content_view.load()) && !g_have_surfaces.load() && gl_present_active()) {
+        gl_present_tree(argb, w, h);
+        return;
+    }
     compose_and_present(env);
 }
 
@@ -1096,6 +1162,7 @@ void JNICALL Cocoa_presentSurfaceBitmap(JNIEnv* env, jclass, jint key, jintArray
         layer.px.assign(reinterpret_cast<const uint32_t*>(px), reinterpret_cast<const uint32_t*>(px) + static_cast<size_t>(w) * h);
         layer.w = w;
         layer.h = h;
+        layer.fresh = true;
         g_have_surfaces = true;
     }
     env->ReleaseIntArrayElements(argb, px, JNI_ABORT);
@@ -1109,6 +1176,23 @@ void keep_tree_frame(const uint32_t* argb, int w, int h) {
     g_tree_frame.assign(argb, argb + static_cast<size_t>(w) * h);
     g_tree_w = w;
     g_tree_h = h;
+}
+
+bool present_on_gpu(JNIEnv* env) {
+    if (!gpu_layers_allowed()) return false;
+    const bool was = gl_present_active();
+    int w = 0, h = 0;
+    void* share = gl_frame_share_handle(&w, &h);
+    if (!gl_present_frame(share, w, h, w, h)) {
+        gl_present_stop();
+        return false;
+    }
+    if (g_gpu_guest.exchange(false) || !was) {
+        if (g_have_surfaces.load() && compose_on_gpu(env)) return true;
+        std::lock_guard<std::mutex> hold(g_comp_lock);
+        if (!g_comp_tree.empty()) gl_present_tree(g_comp_tree.data(), g_comp_tree_w, g_comp_tree_h);
+    }
+    return true;
 }
 
 // One GL view's tick: ANGLE's context on its pbuffer, the renderer's
@@ -1141,7 +1225,12 @@ void gl_tick(JNIEnv* env, jlong view, Renderer& r, jobject callbacks, jmethodID 
             ft::add(ft::kGpu, t);
             t = ft::now_us();
         }
-        if (gl_frame_read(&pixels, &fw, &fh)) {
+        if (present_on_gpu(env)) {
+            if (timed) {
+                ft::add(ft::kCompose, t);
+                ft::frame_done(w, h);
+            }
+        } else if (gl_frame_read(&pixels, &fw, &fh)) {
             if (timed) {
                 ft::add(ft::kRead, t);
                 t = ft::now_us();
@@ -1174,12 +1263,13 @@ void pull_guest_layer_z(JNIEnv* env) {
     if (env->ExceptionCheck()) env->ExceptionClear();
 }
 
-// The 60 Hz tick. Sleep(16) ran at the scheduler's granularity -- 15.6 ms
+// The tick, at display_hz(). Sleep(16) ran at the scheduler's granularity -- 15.6 ms
 // by default, so a tick every one or two of those: 40 to 60 frames a second,
 // unevenly. A high-resolution waitable timer (Windows 10 1803 and later;
 // the multimedia timer's 1 ms resolution stands in before that) wakes the
 // thread at the next multiple of 1/60 s. A tick that overran its slot starts
 // the next one at once; it is not made up for.
+// With WINAPK_GL_PRESENT=gpu, ticks fall just after vblank.
 class TickClock {
 public:
     TickClock() {
@@ -1192,7 +1282,8 @@ public:
         }
     }
     void wait() {
-        next_.QuadPart += freq_.QuadPart / 60;
+        next_.QuadPart += freq_.QuadPart / display_hz();
+        if (gl_present_wanted()) to_vblank();
         LARGE_INTEGER now;
         QueryPerformanceCounter(&now);
         if (next_.QuadPart <= now.QuadPart) {
@@ -1211,6 +1302,16 @@ public:
     }
 
 private:
+    void to_vblank() {
+        DWM_TIMING_INFO ti{};
+        ti.cbSize = sizeof ti;
+        if (FAILED(DwmGetCompositionTimingInfo(nullptr, &ti)) || ti.qpcRefreshPeriod == 0) return;
+        const int64_t p = static_cast<int64_t>(ti.qpcRefreshPeriod), v = static_cast<int64_t>(ti.qpcVBlank);
+        const int64_t d = next_.QuadPart - v;
+        const int64_t k = (d >= 0 ? d + p / 2 : d - p / 2) / p;
+        next_.QuadPart = v + k * p + freq_.QuadPart / 2000;  // 0.5 ms after the nearest vblank
+    }
+
     HANDLE timer_ = nullptr;
     LARGE_INTEGER freq_{}, next_{};
 };
@@ -1451,6 +1552,7 @@ const std::wstring& headless_frame_path() {
 // A frame for the window (and for WINAPK_HEADLESS_FRAME): from the view tree,
 // or from the content GL view (gl_tick).
 void present_pixels(const uint32_t* argb, int w, int h) {
+    if (gl_present_active()) gl_present_stop();
     const long frame = ++g_frames;
     if (frame == 1) {
         std::fprintf(stderr, "[win.apk] first frame presented (%dx%d)\n", w, h);
@@ -1481,6 +1583,41 @@ bool content_pixel_size(int* w, int* h) {
 void phone_size_dp(int* w, int* h) {
     *w = g_phone_w.load();
     *h = g_phone_h.load();
+}
+
+bool guest_frame_present_gpu(void* share, int w, int h) {
+    if (!gl_present_wanted() || !frame_presented() || g_have_surfaces.load() || !headless_frame_path().empty()) {
+        return false;
+    }
+    const bool under = g_guest_layer_z.load() == 1;
+    int sw = w, sh = h, tw = 0, th = 0;
+    if (under) {
+        std::lock_guard<std::mutex> hold(g_tree_lock);
+        tw = g_tree_w;
+        th = g_tree_h;
+    }
+    // As present_over_guest.
+    if (tw > 0 && th > 0 && native_window_has_geometry()) {
+        sw = tw;
+        sh = th;
+    }
+    const bool was = gl_present_active() && g_gpu_guest.load();
+    if (!gl_present_frame(share, w, h, sw, sh)) {
+        gl_present_stop();
+        g_gpu_guest = false;
+        return false;
+    }
+    g_gpu_guest = true;
+    if (g_guest_last_ms.exchange(GetTickCount64()) == 0) {
+        std::fprintf(stderr, "[win.apk] native window: first frame from the app's native code (%dx%d)\n", w, h);
+    }
+    if (!under) {
+        gl_present_tree_clear();
+    } else if (!was) {
+        std::lock_guard<std::mutex> hold(g_tree_lock);
+        if (!g_tree_frame.empty()) gl_present_tree(g_tree_frame.data(), g_tree_w, g_tree_h);
+    }
+    return true;
 }
 
 void present_over_guest(const uint32_t* argb, int w, int h);
@@ -1555,6 +1692,14 @@ void JNICALL Cocoa_presentBitmap(JNIEnv* env, jclass, jintArray argb, jint w, ji
     jint* px = env->GetIntArrayElements(argb, nullptr);
     if (!px) return;
     keep_tree_frame(reinterpret_cast<const uint32_t*>(px), w, h);
+    // The native window is the GL layer.
+    if (g_gpu_guest.load() && gl_present_active()) {
+        if (g_guest_layer_z.load() == 1) gl_present_tree(reinterpret_cast<const uint32_t*>(px), w, h);
+        if (g_guest_layer_z.load() == 1 || guest_live()) {
+            env->ReleaseIntArrayElements(argb, px, JNI_ABORT);
+            return;
+        }
+    }
     // While the app's native code shows frames, its next one brings this along.
     // With a GL content view or a surface on screen, the tree is their overlay.
     // When it has gone quiet, the tree still goes over its last frame.

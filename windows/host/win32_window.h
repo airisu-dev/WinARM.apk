@@ -184,6 +184,10 @@ bool window_present_rect(const uint32_t* rows, int w, int h, int l, int t, int r
 // the frame, alpha-blended; cleared with window_clear_overlay.
 void window_set_overlay(const uint32_t* argb, int w, int h);
 void window_clear_overlay();
+// Where paint() would draw a fw x fh frame, and its clip box.
+bool window_layer_rect(int fw, int fh, int dst[4], int box[4]);  // left, top, right, bottom
+// Whether the window is mirrored (RTL), and its client width.
+bool window_mirrored(int* client_w);
 // Keeps the window out of screenshots and screen sharing (FLAG_SECURE).
 void window_set_secure(bool secure);
 

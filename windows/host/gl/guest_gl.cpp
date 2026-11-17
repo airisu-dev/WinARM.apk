@@ -73,6 +73,7 @@ struct WindowSurface {
     // its handle is bound by EGL14 itself, which knows no pbuffer behind it,
     // so it is never replaced by a larger one.
     bool fixed = false;
+    void* share = nullptr;  // of `real`
 };
 
 // The window's size: what the app should draw (eglQuerySurface) and what the
@@ -142,6 +143,7 @@ void grow(EGLDisplay dpy, EGLSurface handle, WindowSurface& ws) {
     std::fprintf(stderr, "[win.apk] GL: the app's window surface grew to a %dx%d pbuffer for a %dx%d window\n", side,
                  side, w, h);
     ws.real = s;
+    ws.share = nullptr;
     ws.side = side;
 }
 
@@ -287,9 +289,17 @@ WINAPK_GUEST_ABI EGLBoolean guest_eglSwapBuffers(EGLDisplay dpy, EGLSurface surf
     if (eglGetCurrentSurface(EGL_DRAW) != ws.real) return EGL_TRUE;
     int w = 0, h = 0;
     live_size(ws, &w, &h);
-    thread_local std::vector<uint32_t> argb;
-    gl_read_current(&argb, w, h);
-    guest_frame_present(argb.data(), w, h);
+    if (!ws.share) {
+        ws.share = gl_surface_share_handle(ws.real);
+        std::lock_guard<std::mutex> hold(g_lock);
+        auto it = g_window_surfaces.find(surface);
+        if (it != g_window_surfaces.end() && it->second.real == ws.real) it->second.share = ws.share;
+    }
+    if (!guest_frame_present_gpu(ws.share, w, h)) {
+        thread_local std::vector<uint32_t> argb;
+        gl_read_current(&argb, w, h);
+        guest_frame_present(argb.data(), w, h);
+    }
     // The window outgrew the pbuffer (this frame was read from the part that
     // fits): the next frame gets one that holds it.
     int ww = 0, wh = 0;

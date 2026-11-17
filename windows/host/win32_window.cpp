@@ -1968,6 +1968,33 @@ void window_clear_overlay() {
     if (g_hwnd) InvalidateRect(g_hwnd, nullptr, FALSE);
 }
 
+bool window_layer_rect(int fw, int fh, int dst[4], int box[4]) {
+    HWND hwnd = g_hwnd;
+    if (!hwnd || fw <= 0 || fh <= 0) return false;
+    RECT client{};
+    GetClientRect(hwnd, &client);
+    const RECT b = app_rect(client);
+    const int bw = b.right - b.left, bh = b.bottom - b.top;
+    if (bw <= 0 || bh <= 0) return false;
+    box[0] = b.left, box[1] = b.top, box[2] = b.right, box[3] = b.bottom;
+    const FramePresent how = window_frame_present(fw, fh, bw, bh, g_surface.cx, g_surface.cy);
+    if (how == FramePresent::kScaled) {
+        std::copy(box, box + 4, dst);
+        return true;
+    }
+    const int x = how == FramePresent::kExact ? b.left + (bw - fw) / 2 : b.left;
+    const int y = how == FramePresent::kExact ? b.top + (bh - fh) / 2 : b.top;
+    dst[0] = x, dst[1] = y, dst[2] = x + fw, dst[3] = y + fh;
+    return true;
+}
+
+bool window_mirrored(int* client_w) {
+    RECT client{};
+    if (!g_hwnd || !GetClientRect(g_hwnd, &client)) return false;
+    *client_w = client.right;
+    return g_rtl_window;
+}
+
 void window_set_secure(bool secure) {
     // WDA_EXCLUDEFROMCAPTURE (Windows 10 2004); older systems show it black.
     if (g_hwnd && !SetWindowDisplayAffinity(g_hwnd, secure ? 0x11 : WDA_NONE) && secure) {
