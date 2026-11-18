@@ -96,6 +96,7 @@
 #include "app_runs.h"
 #include "clear_library.h"
 #include "install_names.h"
+#include "install_versions.h"
 #include "installs.h"
 #include "page_sync.h"
 #include "shortcut_rules.h"
@@ -1180,6 +1181,19 @@ bool install_into_library(const fs::path& source, const std::wstring& name, cons
     const bool backed_up = !same && fs::exists(target, ec) &&
                            MoveFileExW(target.c_str(), kept.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
     bool ok = same || CopyFileW(source.c_str(), target.c_str(), FALSE) != 0;
+    if (ok && !same) {
+        // The copy keeps the file's own time, and the runtime takes an install as current when its record is newer
+        // than the APK: a file older than the last install (an older version, say) would be left unconverted.
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        const HANDLE h = CreateFileW(target.c_str(), FILE_WRITE_ATTRIBUTES,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            SetFileTime(h, nullptr, nullptr, &now);
+            CloseHandle(h);
+        }
+    }
     // The install writes the new version's icon first (so that it shows while the code is converted):
     // an update keeps the app's own beside it, to put back if the update does not go through.
     const fs::path icon = app_dir(name) / L"icon.png", icon_kept = app_dir(name) / L"icon.png.previous";
@@ -4196,9 +4210,15 @@ std::wstring install_name(const fs::path& source) {
     return file_name_safe(name);
 }
 
-// A file's package, empty when it cannot be read: winapk-runtime --package-to, which for a bundle
-// reads its base APK. Waits for the runtime, so only a worker calls it.
-std::string read_package(const fs::path& file) {
+// What an app file says of itself.
+struct PackageRead {
+    std::string package;  // empty when it cannot be read
+    winapk::launcher::AppVersion version;
+};
+
+// A file's package and version: winapk-runtime --package-to, which for a bundle reads its base APK, and
+// gives both in one start. Waits for the runtime, so only a worker calls it.
+PackageRead read_package(const fs::path& file) {
     static unsigned counter = 0;  // the resolver thread's only
     std::error_code ec;
     const fs::path out = data_dir() / L"staging" /
@@ -4207,7 +4227,7 @@ std::string read_package(const fs::path& file) {
     fs::create_directories(out.parent_path(), ec);
     HANDLE p = start_runtime(L"--apk \"" + file.wstring() + L"\" --package-to \"" + out.wstring() + L"\"",
                              logs_dir() / L"package-probe.log");
-    std::string pkg;
+    std::vector<std::string> lines;
     if (p) {
         // A runtime that hangs would hold up every file behind this one.
         const bool done = WaitForSingleObject(p, 60000) == WAIT_OBJECT_0;
@@ -4217,12 +4237,18 @@ std::string read_package(const fs::path& file) {
         CloseHandle(p);
         if (done && code == 0) {
             std::ifstream f(out, std::ios::binary);
-            std::getline(f, pkg);
+            for (std::string line; lines.size() < 3 && std::getline(f, line);) {
+                while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+                lines.push_back(line);
+            }
         }
     }
     fs::remove(out, ec);
-    while (!pkg.empty() && (pkg.back() == '\r' || pkg.back() == ' ')) pkg.pop_back();
-    return pkg;
+    PackageRead r;
+    if (lines.empty() || lines[0].empty()) return r;
+    r.package = lines[0];
+    r.version = winapk::launcher::version_from_lines(lines, false);
+    return r;
 }
 
 // A file waiting to be named: what its install needs to know of it, read off the library's thread
@@ -4231,6 +4257,7 @@ struct ResolveJob {
     fs::path source;
     std::wstring wanted;         // install_name(source)
     std::string package;         // the file's own; empty when it cannot be read
+    winapk::launcher::AppVersion version;  // the file's own; not known when it cannot be read
     std::string wanted_package;  // the package of the app that holds `wanted`, when it has no .package file
 };
 
@@ -4241,9 +4268,13 @@ std::set<std::wstring> g_resolving;  // the files in the queue or being read, by
 
 // An install is queued or under way, or a file is still being read to become one.
 bool installs_in_progress() { return any_pending() || !g_resolving.empty(); }
-// The package of each install queued from here, by name, until its end: a later file of that name is
+// The package and version of each install queued from here, by name, until its end: a later file of that name is
 // compared with it, as the .package file only comes with the install's end (the library's thread).
-std::map<std::wstring, std::string> g_queued_packages;
+struct QueuedInstall {
+    std::string package;
+    winapk::launcher::AppVersion version;
+};
+std::map<std::wstring, QueuedInstall> g_queued_installs;
 
 std::wstring source_key(const fs::path& source) {
     std::error_code ec;
@@ -4264,7 +4295,11 @@ DWORD WINAPI resolve_thread(void*) {
         }
         ReleaseSRWLockExclusive(&g_resolve_lock);
         if (!job) return 0;
-        if (job->package.empty()) job->package = read_package(job->source);
+        if (job->package.empty()) {
+            PackageRead r = read_package(job->source);
+            job->package = std::move(r.package);
+            job->version = std::move(r.version);
+        }
         // An app from before the library kept packages (backfill_thread has yet to reach it).
         std::error_code ec;
         const std::vector<std::string> known = package_of(job->wanted);
@@ -4272,7 +4307,7 @@ DWORD WINAPI resolve_thread(void*) {
             for (const wchar_t* ext : kExtensions) {
                 const fs::path apk = library_dir() / (job->wanted + ext);
                 if (fs::is_regular_file(apk, ec)) {
-                    job->wanted_package = read_package(apk);
+                    job->wanted_package = read_package(apk).package;
                     break;
                 }
             }
@@ -4283,11 +4318,16 @@ DWORD WINAPI resolve_thread(void*) {
 }
 
 // The package of the install queued under `name` (compared as the file system does), or empty.
-std::string queued_package(const std::wstring& name) {
-    for (const auto& q : g_queued_packages) {
-        if (_wcsicmp(q.first.c_str(), name.c_str()) == 0) return q.second;
+const QueuedInstall* queued_install(const std::wstring& name) {
+    for (const auto& q : g_queued_installs) {
+        if (_wcsicmp(q.first.c_str(), name.c_str()) == 0) return &q.second;
     }
-    return {};
+    return nullptr;
+}
+
+std::string queued_package(const std::wstring& name) {
+    const QueuedInstall* q = queued_install(name);
+    return q ? q->package : std::string();
 }
 
 // Who has a library name: an install queued from here, or an app (or what an interrupted install
@@ -4315,11 +4355,11 @@ winapk::launcher::NameHolder name_holder(const std::wstring& name, const std::ws
 // removes, and shows its progress on the app's card rather than in the
 // install window. `package` is the file's, when known.
 void queue_install(const fs::path& source, const std::wstring& name, fs::path replaces, bool from_store,
-                   const std::string& package) {
+                   const std::string& package, const winapk::launcher::AppVersion& version = {}) {
     if (is_pending(name)) return;  // the same file twice
     if (!any_pending() && !g_install_wnd) g_jobs.clear();
     begin_install(name);
-    if (!package.empty()) g_queued_packages[name] = package;
+    if (!package.empty()) g_queued_installs[name] = {package, version};
     Job job{name};
     job.file = source.filename().wstring();
     job.update = find_app(name) != nullptr;
@@ -4364,17 +4404,79 @@ void install(const fs::path& source, std::wstring name = L"", fs::path replaces 
     info(fmt(L"{0} could not be installed.", {source.filename().wstring()}), kError);
 }
 
-// kInstallResolved: the file's package is known, so is its name.
-void install_resolved(const ResolveJob& j) {
-    g_resolving.erase(source_key(j.source));
-    const winapk::launcher::NameChoice choice = winapk::launcher::choose_install_name(
-        j.wanted, j.package, [&](const std::wstring& n) { return name_holder(n, j.wanted, j.wanted_package); });
+// The version `name` is at: the install queued under it, else what its install recorded (an app installed
+// before the library kept versions has none, and is not known).
+winapk::launcher::AppVersion installed_version(const std::wstring& name) {
+    if (const QueuedInstall* q = queued_install(name); q && q->version.known) return q->version;
+    return winapk::launcher::version_from_lines(package_of(name), true);
+}
+
+// Asks whether to go back to an older version of the app held under `name`. Declined is the default (Enter, Esc
+// and the caption's close): an older file replaces a newer install only when the user says so.
+bool downgrade_accepted(const fs::path& file, const std::wstring& name, const winapk::launcher::AppVersion& older,
+                        const winapk::launcher::AppVersion& installed) {
+    Prompt p;
+    p.app = label_of(name);
+    p.icon = rounded_icon(app_dir(name) / L"icon.png", ipx(40));
+    p.question = fmt(L"Install an older version of {0}?", {p.app});
+    p.note = fmt(L"{0} is version {1}, and version {2} is installed. An older version may not work with the data "
+                 L"the newer one saved.",
+                 {file.filename().wstring(), utf8_to_wide(winapk::launcher::describe_version(older)),
+                  utf8_to_wide(winapk::launcher::describe_version(installed))});
+    p.buttons = {{IDOK, L"Install older version"}, {IDCANCEL, L"Keep installed version"}};
+    p.default_id = IDCANCEL;
+    return run_dialog(p, owner()) == IDOK;
+}
+
+// An older file than the installed app is queued only if the user agrees.
+void decide_install(const ResolveJob& j) {
+    const auto choose = [&] {
+        return winapk::launcher::choose_install_name(
+            j.wanted, j.package, [&](const std::wstring& n) { return name_holder(n, j.wanted, j.wanted_package); });
+    };
+    winapk::launcher::NameChoice choice = choose();
     if (choice.name.empty()) {
         info(fmt(L"{0} could not be installed: too many apps have its name.", {j.source.filename().wstring()}),
              kError);
         return;
     }
-    queue_install(j.source, choice.name, {}, false, j.package);
+    if (choice.update) {
+        const winapk::launcher::AppVersion installed = installed_version(choice.name);
+        if (winapk::launcher::is_downgrade(j.version, installed)) {
+            if (!downgrade_accepted(j.source, choice.name, j.version, installed)) return;
+            // The question ran the messages: an install may have ended or been queued, an app removed.
+            choice = choose();
+            if (choice.name.empty() || is_pending(choice.name)) {
+                info(fmt(L"{0} could not be installed now: the app is being installed. Open it again afterwards.",
+                         {j.source.filename().wstring()}),
+                     kError);
+                return;
+            }
+        }
+    }
+    queue_install(j.source, choice.name, {}, false, j.package, j.version);
+}
+
+// Files read and waiting for their name or, for an older one, an answer (the library's thread).
+std::deque<std::unique_ptr<ResolveJob>> g_resolved;
+bool g_deciding = false;
+
+// kInstallResolved. The question for an older file runs the
+// messages while it is up, which brings the next file here: it waits its turn, so that only one question is
+// open. Each file stays in g_resolving until it is decided, which keeps the process alive meanwhile.
+void install_resolved(std::unique_ptr<ResolveJob> job) {
+    g_resolved.push_back(std::move(job));
+    if (g_deciding) return;
+    struct Deciding {
+        Deciding() { g_deciding = true; }
+        ~Deciding() { g_deciding = false; }
+    } deciding;
+    while (!g_resolved.empty()) {
+        const std::unique_ptr<ResolveJob> next = std::move(g_resolved.front());
+        g_resolved.pop_front();
+        decide_install(*next);
+        g_resolving.erase(source_key(next->source));
+    }
 }
 
 void add_from_dialog() {
@@ -8560,8 +8662,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case kInstallResolved: {
-            const std::unique_ptr<ResolveJob> job(reinterpret_cast<ResolveJob*>(lp));
-            install_resolved(*job);
+            install_resolved(std::unique_ptr<ResolveJob>(reinterpret_cast<ResolveJob*>(lp)));
             maybe_quit();
             return 0;
         }
@@ -8581,7 +8682,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case kInstalled: {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             const InstallEnd end = finish_install(*name);
-            g_queued_packages.erase(*name);
+            g_queued_installs.erase(*name);
             const InstallEnd::Kind how = end.kind();
             refresh();
             for (Job& j : g_jobs) {
@@ -8893,8 +8994,8 @@ void write_registry() {
 }
 
 // Apps installed before the library recorded packages get theirs read now,
-// in the background, so the registry knows them too. (Only the name: the
-// version comes with the app's next install.)
+// in the background, so the registry knows them too, with the version the
+// APK says.
 DWORD WINAPI backfill_thread(void*) {
     bool changed = false;
     std::error_code ec;
@@ -9015,17 +9116,33 @@ int helper_main(int argc, wchar_t** argv) {
     fs::create_directories(pkg_out.parent_path(), ec);
     HANDLE probe = start_runtime(L"--apk \"" + apk + L"\" --package-to \"" + pkg_out.wstring() + L"\"",
                                  logs_dir() / L"install-helper.log");
-    std::string pkg;
+    std::vector<std::string> lines;
     if (probe && wait_exit(probe) == 0) {
         std::ifstream f(pkg_out, std::ios::binary);
-        std::getline(f, pkg);
+        for (std::string line; lines.size() < 3 && std::getline(f, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            lines.push_back(line);
+        }
     }
     fs::remove(pkg_out, ec);
+    const std::string pkg = lines.empty() ? std::string() : lines[0];
     if (pkg.empty()) return helper_fail(6, "invalid-apk", "no package name in the app");
     helper_progress(0.05, "parsed");
 
     const App* existing = find_package(apps, pkg);
     const bool update = existing != nullptr;
+    // As Android's installer does, with no question: an older version never replaces a newer one. Exit 6 is
+    // what the installer reports as STATUS_FAILURE_INVALID, which is what INSTALL_FAILED_VERSION_DOWNGRADE is.
+    if (update) {
+        const winapk::launcher::AppVersion older = winapk::launcher::version_from_lines(lines, false);
+        const winapk::launcher::AppVersion installed =
+            winapk::launcher::version_from_lines(package_of(existing->name), true);
+        if (winapk::launcher::is_downgrade(older, installed)) {
+            return helper_fail(6, "downgrade",
+                               "the installed version " + winapk::launcher::describe_version(installed) +
+                                   " is newer than this app's " + winapk::launcher::describe_version(older));
+        }
+    }
     const std::wstring wpkg = utf8_to_wide(pkg);
     // The Play Store installs as a phone's system installer does, with no question: it holds INSTALL_PACKAGES
     // there, and the user already chose the app in it. Only the real one: the asking runtime runs the

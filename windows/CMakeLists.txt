@@ -370,7 +370,7 @@ target_compile_definitions(winapk-launcher PRIVATE "WINAPK_REPO=\"${WINAPK_REPO}
 target_link_options(winapk-launcher PRIVATE -municode -static)
 target_link_libraries(winapk-launcher PRIVATE comctl32 shell32 ole32 uuid gdiplus dwmapi uxtheme gdi32 winhttp bcrypt crypt32)
 
-# The launcher's state machines (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, clear_library.h, updates.h, page_sync.h): no lock and no Windows call in them, so the test drives
+# The launcher's state machines (launcher/app_runs.h, installs.h, install_names.h, install_versions.h, shortcut_rules.h, clear_library.h, updates.h, page_sync.h): no lock and no Windows call in them, so the test drives
 # each step as the library's thread and a worker's would. test/launcher_state_test.cpp.
 add_executable(winapk-launcher-state-test test/launcher_state_test.cpp)
 if(MINGW)

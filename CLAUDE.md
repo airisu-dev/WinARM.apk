@@ -82,7 +82,11 @@ runtime's permission groups), single instance (`forward_to_running`,
   package on a worker (`winapk-runtime --package-to`), and `install_resolved`
   names it by `install_names.h`: an app of the same package is updated, any
   other file gets its package as its name. A file or holder whose package
-  cannot be read is never an update.
+  cannot be read is never an update. The same read gives the file's
+  versionCode (64-bit) and name (`install_versions.h`): an update to a lower
+  versionCode than the installed one asks first (`decide_install`, one
+  question at a time, Keep installed is the default), and the install helper
+  refuses it; a version unknown on either side asks nothing.
 - One home per action: the tile's menu is Open, Stop, App details, Remove;
   everything else per app is on the App details page. Don't add a second way
   to an action. Report a problem is `report_problem` (a prefilled issue URL;

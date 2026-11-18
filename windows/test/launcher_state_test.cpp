@@ -1,5 +1,5 @@
 // launcher_state_test.cpp -- winapk-launcher-state-test: the launcher's state machines
-// (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, clear_library.h, updates.h, page_sync.h), which
+// (launcher/app_runs.h, installs.h, install_names.h, install_versions.h, shortcut_rules.h, clear_library.h, updates.h, page_sync.h), which
 // hold no lock and make no Windows call, driven step by step as the library's thread and a worker's thread drive them.
 //
 //   winapk-launcher-state-test
@@ -13,6 +13,7 @@
 // download's progress.
 // The name a file installs under: free, the same package, another package, an unknown one; the
 // generated name already taken.
+// The version a file or an installed app is: read strictly, 64-bit, and when installing the file is a downgrade.
 // A page built again on its own: when App details is due, and the hovered or Tab-focused control stays on its row.
 
 #include <cstdio>
@@ -23,6 +24,7 @@
 #include "../launcher/app_runs.h"
 #include "../launcher/clear_library.h"
 #include "../launcher/install_names.h"
+#include "../launcher/install_versions.h"
 #include "../launcher/installs.h"
 #include "../launcher/page_sync.h"
 #include "../launcher/shortcut_rules.h"
@@ -583,6 +585,77 @@ void test_install_names() {
     }
 }
 
+void test_install_versions() {
+    std::printf("the version of an app file, and downgrades\n");
+    using namespace winapk::launcher;
+    long long v = -1;
+    check("a plain code parses", parse_version_code("12345", &v) && v == 12345);
+    check("zero parses", parse_version_code("0", &v) && v == 0);
+    check("a 64-bit code (major 1, minor 5) parses", parse_version_code("4294967301", &v) && v == 4294967301LL);
+    check("the largest code parses", parse_version_code("9223372036854775807", &v) && v == 9223372036854775807LL);
+    check("one more overflows: not a code", !parse_version_code("9223372036854775808", &v));
+    check("twenty digits: not a code", !parse_version_code("10000000000000000000", &v));
+    check("empty: not a code", !parse_version_code("", &v));
+    check("a sign: not a code", !parse_version_code("+5", &v) && !parse_version_code("-5", &v));
+    check("a space or letter: not a code", !parse_version_code(" 5", &v) && !parse_version_code("5 ", &v) &&
+                                               !parse_version_code("5a", &v) && !parse_version_code("0x10", &v));
+    check("a number with a point or comma: not a code", !parse_version_code("1.5", &v) && !parse_version_code("1,5", &v));
+    check("a recorded 32-bit code read as signed is unsigned: -1 is 2^32-1",
+          parse_version_code("-1", &v, true) && v == 4294967295LL);
+    check("so is -2147483648", parse_version_code("-2147483648", &v, true) && v == 2147483648LL);
+    check("beyond 32 bits negative, \"-\" or \"-0\": not a code",
+          !parse_version_code("-2147483649", &v, true) && !parse_version_code("-", &v, true) &&
+              !parse_version_code("-0", &v, true));
+
+    check("a name loses control characters", clean_version_name("1.2\n3\r\t") == "1.23");
+    check("a name is trimmed", clean_version_name("  1.2  ") == "1.2");
+    check("a name of 64 bytes is kept", clean_version_name(std::string(64, 'a')) == std::string(64, 'a'));
+    check("a longer one is cut to 64", clean_version_name(std::string(100, 'a')) == std::string(64, 'a'));
+    {
+        // 63 bytes, then a 2-byte character that would end at 65: cut before it, not through it.
+        const std::string cut = clean_version_name(std::string(63, 'a') + "\xC3\xA9" + "zz");
+        check("a name is not cut inside a UTF-8 sequence", cut == std::string(63, 'a'));
+    }
+
+    auto lines = [](std::vector<std::string> l) { return l; };
+    {
+        const AppVersion f = version_from_lines(lines({"com.a.one", "42", "1.4.2"}), false);
+        check("a record's version and name", f.known && f.code == 42 && f.name == "1.4.2");
+    }
+    check("no code line: not known", !version_from_lines(lines({"com.a.one"}), false).known);
+    check("an empty code: not known", !version_from_lines(lines({"com.a.one", "", "1.0"}), false).known);
+    check("text for a code: not known", !version_from_lines(lines({"com.a.one", "latest", "1.0"}), false).known);
+    check("a file's negative code: not known", !version_from_lines(lines({"com.a.one", "-3", "1.0"}), false).known);
+    check("an installed record's negative code is a 32-bit one",
+          version_from_lines(lines({"com.a.one", "-3"}), true).code == 4294967293LL);
+    check("no name line: known, no name", version_from_lines(lines({"com.a.one", "7"}), false).known);
+    check("no lines: not known", !version_from_lines({}, true).known);
+
+    auto ver = [](long long code) {
+        AppVersion a;
+        a.known = true;
+        a.code = code;
+        return a;
+    };
+    const AppVersion none;
+    check("older is a downgrade", is_downgrade(ver(3), ver(5)));
+    check("the same version is not", !is_downgrade(ver(5), ver(5)));
+    check("a newer one is not", !is_downgrade(ver(6), ver(5)));
+    check("an unknown file version is not", !is_downgrade(none, ver(5)));
+    check("an unknown installed version is not", !is_downgrade(ver(3), none));
+    check("neither known is not", !is_downgrade(none, none));
+    check("64-bit: the major decides (1<<32 | 1 over 5)", !is_downgrade(ver((1LL << 32) | 1), ver(5)));
+    check("64-bit: 5 under 1<<32 is a downgrade", is_downgrade(ver(5), ver(1LL << 32)));
+    check("64-bit: same major, lower minor is a downgrade", is_downgrade(ver((3LL << 32) | 2), ver((3LL << 32) | 9)));
+    check("a code that overflows 32 bits is not truncated", !is_downgrade(ver(4294967296LL), ver(1)));
+    check("zero installed is never a downgrade", !is_downgrade(ver(0), ver(0)) && !is_downgrade(ver(1), ver(0)));
+
+    AppVersion named = ver(45);
+    named.name = "1.2.3";
+    check("a version is described by its name and code", describe_version(named) == "1.2.3 (45)");
+    check("without a name, by its code", describe_version(ver(45)) == "45");
+}
+
 void test_shortcut_rules() {
     using namespace winapk::launcher;
     check("the ProgID is ours", owns_association(L"WinApk.Package"));
@@ -678,6 +751,7 @@ int main() {
     test_installs();
     test_updates();
     test_install_names();
+    test_install_versions();
     test_shortcut_rules();
     test_clear_outcome();
     test_page_sync();
