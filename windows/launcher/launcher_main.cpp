@@ -25,7 +25,8 @@
 //
 // One process serves it all: another start hands its files to the one
 // running (forward_to_running), and an APK from Explorer shows only the
-// install window, not the library.
+// install window, not the library. Closing the library only hides it while something is under way (an
+// install, a run, a Store or update download); the process quits when that is over.
 //
 // Double-clicking an app runs it (winapk-runtime --apk, without a console)
 // behind a splash that stays until the runtime says its window is up
@@ -4556,11 +4557,17 @@ void store_get(const StoreApp& a) {
     const Offer offer = offer_for(a);
     if (offer != kOfferInstall && offer != kOfferUpdate) return;
     if (!is_package_name(a.pkg) || !is_repo_file_name(a.apk)) return;
+    // An entry in downloads keeps the process alive while the library is hidden, so it exists only with a thread.
+    auto* d = new Download{a.pkg, a.sha256, std::wstring(kRepo) + utf8_to_wide(a.apk), a.name,
+                           downloads_dir() / utf8_to_wide(a.apk)};
+    HANDLE t = CreateThread(nullptr, 0, download_thread, d, 0, nullptr);
+    if (!t) {
+        delete d;
+        info(fmt(L"Downloading {0} failed. Check the internet connection, then try again.", {a.name}), kError);
+        return;
+    }
+    CloseHandle(t);
     g_store.downloads[a.pkg] = -1;
-    CloseHandle(CreateThread(nullptr, 0, download_thread,
-                             new Download{a.pkg, a.sha256, std::wstring(kRepo) + utf8_to_wide(a.apk), a.name,
-                                          downloads_dir() / utf8_to_wide(a.apk)},
-                             0, nullptr));
     info(fmt(L"Downloading {0}…", {a.name}), kInfo);
     InvalidateRect(g_main, nullptr, FALSE);
 }
@@ -4571,6 +4578,7 @@ void store_downloaded(const Download& d, bool ok) {
     g_store.downloads.erase(d.pkg);
     if (!ok) {
         info(fmt(L"Downloading {0} failed. Check the internet connection, then try again.", {d.label}), kError);
+        maybe_quit();
         return;
     }
     const auto it = g_store.installed.find(d.pkg);
@@ -4583,6 +4591,7 @@ void store_downloaded(const Download& d, bool ok) {
                                              .name;
     if (name.empty()) {
         info(fmt(L"{0} could not be installed: too many apps have its name.", {d.label}), kError);
+        maybe_quit();
         return;
     }
     if (!existing) g_job_labels[name] = d.label;
@@ -5950,6 +5959,18 @@ void remove_old_setups() {
     }
 }
 
+// What a download killed half way (the process ended, the power went) leaves: <file>.part. http_get starts
+// a download over and never resumes one. Run at start by the library's process (the one that passed
+// forward_to_running), before any download of this run exists.
+void remove_partial_downloads() {
+    for (const fs::path& dir : {downloads_dir(), updates_dir()}) {
+        std::error_code ec;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->path().extension() == L".part") fs::remove(it->path(), ec);
+        }
+    }
+}
+
 // `fetch` asks GitHub; else only the answer kept from the last check is read (at start, within the day).
 void start_update_check(bool fetch, bool manual) {
     if (!g_update.begin_check(fetch)) return;  // one runs already
@@ -6085,7 +6106,15 @@ void start_update() {
 
 void update_downloaded(std::unique_ptr<UpdateFile> u) {
     g_update.downloaded();
-    if (u->result == UpdateFile::kReady && run_installer(*u)) return;  // the library is gone
+    using winapk::launcher::InstallerDownloaded;
+    const InstallerDownloaded action =
+        winapk::launcher::installer_downloaded(IsWindowVisible(g_main), u->result == UpdateFile::kReady);
+    if (action == InstallerDownloaded::kKeep) {
+        // u closes its handle on return; the checked file stays for the next "Update".
+        maybe_quit();
+        return;
+    }
+    if (action == InstallerDownloaded::kRun && run_installer(*u)) return;  // the library is gone
     switch (u->result) {
         case UpdateFile::kNotDownloaded:
             info(L"Couldn't download the update. Check the internet connection.", kError);
@@ -6100,6 +6129,7 @@ void update_downloaded(std::unique_ptr<UpdateFile> u) {
             break;  // run_installer said why it did not start
     }
     if (g_view == kSettingsView) rebuild_page();
+    maybe_quit();
 }
 
 // The Update button shows how far the download is; changed in place, since a rebuild asks the runtime for the
@@ -10321,9 +10351,11 @@ void show_library(int show) {
 }
 
 // When the library is not shown, the process lives only for what it is doing: an install window,
-// a splash, an app it started (to report how it ended), the log window.
+// a splash, an app it started (to report how it ended), the log window, a download (the store's, or
+// Win.apk's own update).
 bool has_work() {
-    return g_install_wnd || g_log_wnd || !g_splashes.empty() || any_runs() || installs_in_progress();
+    return g_install_wnd || g_log_wnd || !g_splashes.empty() || any_runs() || installs_in_progress() ||
+           !g_store.downloads.empty() || g_update.downloading();
 }
 
 void maybe_quit() {
@@ -10404,6 +10436,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // Before anything reads the library: an update cut off the last time (a crash, the power) is undone.
     recover_interrupted_installs();
     if (run_apk.empty()) {
+        remove_partial_downloads();
         integrate_with_windows();
         refresh_app_shortcuts();
         write_registry();  // apps installed before the registry existed, or by an older launcher

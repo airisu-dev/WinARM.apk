@@ -489,6 +489,18 @@ void test_updates() {
         t.downloaded();
         check("it ends", !t.downloading() && t.percent() == -1 && t.begin_download());
     }
+    {
+        using winapk::launcher::InstallerDownloaded;
+        using winapk::launcher::installer_downloaded;
+        check("a checked installer with the library shown runs",
+              installer_downloaded(true, true) == InstallerDownloaded::kRun);
+        check("a failed download with the library shown is reported",
+              installer_downloaded(true, false) == InstallerDownloaded::kReport);
+        check("a checked installer with the library hidden is kept, not run",
+              installer_downloaded(false, true) == InstallerDownloaded::kKeep);
+        check("a failed download with the library hidden is kept quiet too",
+              installer_downloaded(false, false) == InstallerDownloaded::kKeep);
+    }
 }
 
 // The library as a table of name -> package ("": held, package unknown); a name not in it is free.
