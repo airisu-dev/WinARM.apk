@@ -19,7 +19,7 @@ setting is also a change to the document that names it.
 |---|---|
 | `windows/src/`, `windows/include/winapk/` | ELF loader, linker, ELF TLS, ABI thunks, guest JNI. `include/winapk/arch.h` (ARM64 only: it errors on any other target), `src/arm64/arm64_native.cpp` + `src/abi_thunk_arm64.cpp` (arm64 guest code run natively), `include/winapk/arm64_x18.h` (the x18 scan). `src/bionic/` + `mini_bionic.cpp`: the Bionic libc shim |
 | `windows/host/` | The runtime host: `runtime_main.cpp` (`winapk-runtime.exe`: args `--apk --data --jdk --lib --install-only`, `--gms <cmd>` runs `com.macapk.gms.GmsCli` with no app, `--system` the system broker, `--verify-apk <file>` an app file's package and whether Google signed it: `windows/java/com/winapk/tools/ApkCheck.java`), `win32_window.cpp` (window, input; `pointer_input.h` the input decisions that need no window), `native_*.cpp` (the Java natives, one file per class: audio on WASAPI, video and MediaCodec in `native_media_video.cpp` + `video_player.cpp` + `video_decode.cpp` and `native_media_codec.cpp` + `media_encode.cpp` + `mp4_writer.cpp`, WebView on WebView2 in `native_webview.cpp` + `webview2_host.cpp`, notifications as Windows toasts, the Google sign-in window, camera, location, Bluetooth, radios, gamepad, clipboard, picker), `binder_win.cpp` (cross-process Binder over named pipes), `gl/`, `user_folders.cpp` (shared storage junctions), `cds.cpp` + `cds_util.cpp` (class-data sharing, the framework archive `<data>\cds\`) |
-| `windows/launcher/launcher_main.cpp` | `Win.apk.exe`, the library app (one file, GDI+ custom-drawn). See below. Its state machines are headers beside it with no lock and no Windows call, so `test/launcher_state_test.cpp` drives them: `app_runs.h` (an app's run), `installs.h` (an install), `updates.h` (the update check) |
+| `windows/launcher/launcher_main.cpp` | `Win.apk.exe`, the library app (one file, GDI+ custom-drawn). See below. Its state machines are headers beside it with no lock and no Windows call, so `test/launcher_state_test.cpp` drives them: `app_runs.h` (an app's run), `installs.h` (an install), `install_names.h` (the library name a file installs under), `updates.h` (the update check) |
 | `windows/java/` | Windows-only Java (`com/winapk/tools/AppMeta.java` writes `icon.png` + `label.txt` at install; `java_base_patch/`: the `java.base` overlay that keeps Android paths (`/data/user/0/<pkg>`) and opens the host file they name; `winapk-framework.classlist`) |
 | `windows/scripts/` | `build_java.sh`, `stage_runtime.sh` (runnable `bin/` + `lib/`), `bake_jre.sh` (the shipped `jre/`), `merge_classlists.py`, `fetch_angle.sh`, `fetch_webview2.sh`, `build_framework_res.sh` |
 | `windows/test/` | Unit tests (`*_test.cpp`), guest libs (`guest/`), `compat/` (app sweep: `apps.txt`, `sweep.py`; `smoke.txt` the ten apps every PR boots) |
@@ -76,6 +76,12 @@ runtime's permission groups), single instance (`forward_to_running`,
   (`app_runs.h`), an install's `g_installs` (`installs.h`); change them only
   through their helpers (`begin_run`, `finish_run`, `begin_install`,
   `finish_install`...).
+- A file's library name comes from its file name (`install_name`), but its
+  package decides what that name means: `install()` without a name reads the
+  package on a worker (`winapk-runtime --package-to`), and `install_resolved`
+  names it by `install_names.h`: an app of the same package is updated, any
+  other file gets its package as its name. A file or holder whose package
+  cannot be read is never an update.
 - One home per action: the tile's menu is Open, Stop, App details, Remove;
   everything else per app is on the App details page. Don't add a second way
   to an action. Report a problem is `report_problem` (a prefilled issue URL;

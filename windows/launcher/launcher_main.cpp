@@ -93,6 +93,7 @@
 #include <vector>
 
 #include "app_runs.h"
+#include "install_names.h"
 #include "installs.h"
 #include "updates.h"
 #include "../host/window_fit.h"
@@ -131,6 +132,7 @@ constexpr UINT kUpdateProgress = WM_APP + 14; // wParam: percent of Win.apk-Setu
 constexpr UINT kUpdateDownloaded = WM_APP + 15;  // lParam: new UpdateFile (the installer, checked, or why not)
 constexpr UINT kSetupChanged = WM_APP + 16;   // the Downloads folder changed while the Google services setup is open
 constexpr UINT kSetupChecked = WM_APP + 17;   // lParam: new SetupCheck (winapk-runtime --verify-apk's answer)
+constexpr UINT kInstallResolved = WM_APP + 18;  // lParam: new ResolveJob (a dropped file's package, read)
 constexpr UINT_PTR kInfoBarTimer = 2;  // the InfoBar closes itself
 constexpr UINT_PTR kUpdateTimer = 3;   // hourly: is the daily update check due?
 constexpr UINT_PTR kSetupScanTimer = 4;  // the Downloads folder settled: look for new files in it
@@ -2643,6 +2645,7 @@ void fit_install_window();
 std::wstring install_failure_reason(const fs::path& log);
 void show_library(int show);
 void maybe_quit();
+bool has_work();
 struct Splash;
 
 const App* find_app(const std::wstring& name) {
@@ -4121,14 +4124,130 @@ std::wstring install_name(const fs::path& source) {
     return file_name_safe(name);
 }
 
-// Queues an install. The store's (`from_store`) installs a download it then
+// A file's package, empty when it cannot be read: winapk-runtime --package-to, which for a bundle
+// reads its base APK. Waits for the runtime, so only a worker calls it.
+std::string read_package(const fs::path& file) {
+    static unsigned counter = 0;  // the resolver thread's only
+    std::error_code ec;
+    const fs::path out = data_dir() / L"staging" /
+                         (L"package-launcher-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+                          std::to_wstring(++counter) + L".txt");
+    fs::create_directories(out.parent_path(), ec);
+    HANDLE p = start_runtime(L"--apk \"" + file.wstring() + L"\" --package-to \"" + out.wstring() + L"\"",
+                             logs_dir() / L"package-probe.log");
+    std::string pkg;
+    if (p) {
+        // A runtime that hangs would hold up every file behind this one.
+        const bool done = WaitForSingleObject(p, 60000) == WAIT_OBJECT_0;
+        DWORD code = 1;
+        if (done) GetExitCodeProcess(p, &code);
+        else TerminateProcess(p, 1);
+        CloseHandle(p);
+        if (done && code == 0) {
+            std::ifstream f(out, std::ios::binary);
+            std::getline(f, pkg);
+        }
+    }
+    fs::remove(out, ec);
+    while (!pkg.empty() && (pkg.back() == '\r' || pkg.back() == ' ')) pkg.pop_back();
+    return pkg;
+}
+
+// A file waiting to be named: what its install needs to know of it, read off the library's thread
+// (reading a package starts the runtime).
+struct ResolveJob {
+    fs::path source;
+    std::wstring wanted;         // install_name(source)
+    std::string package;         // the file's own; empty when it cannot be read
+    std::string wanted_package;  // the package of the app that holds `wanted`, when it has no .package file
+};
+
+SRWLOCK g_resolve_lock = SRWLOCK_INIT;  // guards the queue and the flag
+std::deque<std::unique_ptr<ResolveJob>> g_resolve_queue;
+bool g_resolve_running = false;  // the worker is alive; it clears this under the lock when the queue is empty
+std::set<std::wstring> g_resolving;  // the files in the queue or being read, by source_key (the library's thread)
+
+// An install is queued or under way, or a file is still being read to become one.
+bool installs_in_progress() { return any_pending() || !g_resolving.empty(); }
+// The package of each install queued from here, by name, until its end: a later file of that name is
+// compared with it, as the .package file only comes with the install's end (the library's thread).
+std::map<std::wstring, std::string> g_queued_packages;
+
+std::wstring source_key(const fs::path& source) {
+    std::error_code ec;
+    std::wstring key = fs::absolute(source, ec).lexically_normal().wstring();
+    for (wchar_t& c : key) c = static_cast<wchar_t>(towlower(c));
+    return key;
+}
+
+DWORD WINAPI resolve_thread(void*) {
+    for (;;) {
+        std::unique_ptr<ResolveJob> job;
+        AcquireSRWLockExclusive(&g_resolve_lock);
+        if (!g_resolve_queue.empty()) {
+            job = std::move(g_resolve_queue.front());
+            g_resolve_queue.pop_front();
+        } else {
+            g_resolve_running = false;
+        }
+        ReleaseSRWLockExclusive(&g_resolve_lock);
+        if (!job) return 0;
+        if (job->package.empty()) job->package = read_package(job->source);
+        // An app from before the library kept packages (backfill_thread has yet to reach it).
+        std::error_code ec;
+        const std::vector<std::string> known = package_of(job->wanted);
+        if (fs::exists(label_file(job->wanted), ec) && (known.empty() || known[0].empty())) {
+            for (const wchar_t* ext : kExtensions) {
+                const fs::path apk = library_dir() / (job->wanted + ext);
+                if (fs::is_regular_file(apk, ec)) {
+                    job->wanted_package = read_package(apk);
+                    break;
+                }
+            }
+        }
+        // Fails only once g_main is destroyed, and then the program is ending.
+        if (PostMessageW(g_main, kInstallResolved, 0, reinterpret_cast<LPARAM>(job.get()))) job.release();
+    }
+}
+
+// The package of the install queued under `name` (compared as the file system does), or empty.
+std::string queued_package(const std::wstring& name) {
+    for (const auto& q : g_queued_packages) {
+        if (_wcsicmp(q.first.c_str(), name.c_str()) == 0) return q.second;
+    }
+    return {};
+}
+
+// Who has a library name: an install queued from here, or an app (or what an interrupted install
+// left of one) in the library. `hint` is a name whose package `hint_package` was read from its APK.
+winapk::launcher::NameHolder name_holder(const std::wstring& name, const std::wstring& hint,
+                                         const std::string& hint_package) {
+    winapk::launcher::NameHolder h;
+    std::error_code ec;
+    bool pending = false;
+    for (const std::wstring& p : pending_names()) pending = pending || _wcsicmp(p.c_str(), name.c_str()) == 0;
+    bool held = pending || fs::exists(label_file(name), ec);
+    for (const wchar_t* ext : kExtensions) held = held || fs::exists(library_dir() / (name + ext), ec);
+    if (!held) return h;
+    h.taken = true;
+    h.package = queued_package(name);
+    if (h.package.empty()) {
+        const std::vector<std::string> p = package_of(name);
+        if (!p.empty()) h.package = p[0];
+    }
+    if (h.package.empty() && _wcsicmp(name.c_str(), hint.c_str()) == 0) h.package = hint_package;
+    return h;
+}
+
+// Queues an install under `name`. The store's (`from_store`) installs a download it then
 // removes, and shows its progress on the app's card rather than in the
-// install window.
-void install(const fs::path& source, std::wstring name = L"", fs::path replaces = {}, bool from_store = false) {
-    if (name.empty()) name = install_name(source);
+// install window. `package` is the file's, when known.
+void queue_install(const fs::path& source, const std::wstring& name, fs::path replaces, bool from_store,
+                   const std::string& package) {
     if (is_pending(name)) return;  // the same file twice
     if (!any_pending() && !g_install_wnd) g_jobs.clear();
     begin_install(name);
+    if (!package.empty()) g_queued_packages[name] = package;
     Job job{name};
     job.file = source.filename().wstring();
     job.update = find_app(name) != nullptr;
@@ -4138,6 +4257,52 @@ void install(const fs::path& source, std::wstring name = L"", fs::path replaces 
     update_timer();
     rebuild_tiles();
     if (!from_store || g_install_wnd) show_install_window();
+}
+
+// Installs a file. Without a `name` (a file the user gave) the name is decided once its package is
+// read, on a worker, so that a file whose name an app of another package holds does not replace
+// that app (install_names.h): kInstallResolved then calls install_resolved. With one, the caller
+// knows the app: the store's, and the setup page's.
+void install(const fs::path& source, std::wstring name = L"", fs::path replaces = {}, bool from_store = false,
+             std::string package = "") {
+    if (!name.empty()) {
+        queue_install(source, name, replaces, from_store, package);
+        return;
+    }
+    if (!g_resolving.insert(source_key(source)).second) return;  // the same file twice, still being read
+    auto job = std::make_unique<ResolveJob>();
+    job->source = source;
+    job->wanted = install_name(source);
+    job->package = std::move(package);
+    AcquireSRWLockExclusive(&g_resolve_lock);
+    g_resolve_queue.push_back(std::move(job));
+    const bool start = !g_resolve_running;
+    g_resolve_running = true;
+    ReleaseSRWLockExclusive(&g_resolve_lock);
+    if (!start) return;
+    if (HANDLE t = CreateThread(nullptr, 0, resolve_thread, nullptr, 0, nullptr)) {
+        CloseHandle(t);
+        return;
+    }
+    AcquireSRWLockExclusive(&g_resolve_lock);
+    g_resolve_queue.clear();
+    g_resolve_running = false;
+    ReleaseSRWLockExclusive(&g_resolve_lock);
+    g_resolving.erase(source_key(source));
+    info(fmt(L"{0} could not be installed.", {source.filename().wstring()}), kError);
+}
+
+// kInstallResolved: the file's package is known, so is its name.
+void install_resolved(const ResolveJob& j) {
+    g_resolving.erase(source_key(j.source));
+    const winapk::launcher::NameChoice choice = winapk::launcher::choose_install_name(
+        j.wanted, j.package, [&](const std::wstring& n) { return name_holder(n, j.wanted, j.wanted_package); });
+    if (choice.name.empty()) {
+        info(fmt(L"{0} could not be installed: too many apps have its name.", {j.source.filename().wstring()}),
+             kError);
+        return;
+    }
+    queue_install(j.source, choice.name, {}, false, j.package);
 }
 
 void add_from_dialog() {
@@ -4358,9 +4523,18 @@ void store_downloaded(const Download& d, bool ok) {
     }
     const auto it = g_store.installed.find(d.pkg);
     const App* existing = it == g_store.installed.end() ? nullptr : find_app(it->second.first);
-    const std::wstring name = existing ? existing->name : file_name_safe(utf8_to_wide(d.pkg));
+    // A new app's name is its package, unless an app of another package has that name already.
+    const std::wstring name = existing ? existing->name
+                                       : winapk::launcher::choose_install_name(
+                                             file_name_safe(utf8_to_wide(d.pkg)), d.pkg,
+                                             [](const std::wstring& n) { return name_holder(n, L"", ""); })
+                                             .name;
+    if (name.empty()) {
+        info(fmt(L"{0} could not be installed: too many apps have its name.", {d.label}), kError);
+        return;
+    }
     if (!existing) g_job_labels[name] = d.label;
-    install(d.file, name, existing ? existing->apk : fs::path(), true);
+    install(d.file, name, existing ? existing->apk : fs::path(), true, d.pkg);
 }
 
 // ---------------------------------------------------------------------------
@@ -5445,10 +5619,16 @@ void setup_checked(std::unique_ptr<SetupCheck> c) {
                            {file, std::to_wstring(c->min_sdk), std::to_wstring(c->sdk)}),
                        setup_log());
     } else {
-        const std::wstring name = install_name(c->file);
-        g_setup.installing[c->pkg] = name;
-        g_setup_names.insert(name);
-        install(c->file, name);
+        // The package is read already, so the name is decided here, not by install()'s worker.
+        const std::wstring name = winapk::launcher::choose_install_name(
+            install_name(c->file), c->pkg, [](const std::wstring& n) { return name_holder(n, L"", ""); }).name;
+        if (name.empty()) {
+            info(fmt(L"{0} could not be installed: too many apps have its name.", {file}), kError);
+        } else {
+            g_setup.installing[c->pkg] = name;
+            g_setup_names.insert(name);
+            install(c->file, name, {}, false, c->pkg);
+        }
     }
     if (g_view == kGmsSetupView) rebuild_page();
     setup_next();
@@ -5777,7 +5957,7 @@ void update_checked(UpdateCheck& c) {
 // Whether the installer may run now, else says why in the InfoBar: it replaces the runtime that running apps
 // use and the launcher that installs go through.
 bool update_can_start() {
-    if (installs_active() || any_pending() || !g_store.downloads.empty()) {
+    if (installs_active() || installs_in_progress() || !g_store.downloads.empty()) {
         info(L"Wait for the installs to finish, then update Win.apk.", kError);
         return false;
     }
@@ -8177,6 +8357,12 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 SendMessageW(g_search, WM_CHAR, wp, lp);
             }
             return 0;
+        case kInstallResolved: {
+            const std::unique_ptr<ResolveJob> job(reinterpret_cast<ResolveJob*>(lp));
+            install_resolved(*job);
+            maybe_quit();
+            return 0;
+        }
         case kInstallStarted: {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             for (Job& j : g_jobs) {
@@ -8193,6 +8379,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case kInstalled: {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             const InstallEnd end = finish_install(*name);
+            g_queued_packages.erase(*name);
             const InstallEnd::Kind how = end.kind();
             refresh();
             for (Job& j : g_jobs) {
@@ -8407,7 +8594,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 stop_run(g_play.name);
             }
             // Work still under way (an install, a splash) keeps the process; the library only hides.
-            if (g_install_wnd || any_pending() || !g_splashes.empty() || g_log_wnd || any_runs()) {
+            if (has_work()) {
                 ShowWindow(hwnd, SW_HIDE);
                 maybe_quit();
                 return 0;
@@ -8648,7 +8835,12 @@ int helper_main(int argc, wchar_t** argv) {
     if (!agreed) return helper_fail(3, "consent", "declined");
     helper_progress(0.1, "consented");
 
-    const std::wstring name = update ? existing->name : file_name_safe(wpkg);
+    const std::wstring name =
+        update ? existing->name
+               : winapk::launcher::choose_install_name(file_name_safe(wpkg), pkg,
+                                                       [](const std::wstring& n) { return name_holder(n, L"", ""); })
+                     .name;
+    if (name.empty()) return helper_fail(5, "install", "too many apps have the name of " + pkg);
     bool running = false;
     if (!install_into_library(apk, name, update ? existing->apk : fs::path(), &running)) {
         if (running) return helper_fail(5, "install", "the app is running; close it, then update it");
@@ -10078,9 +10270,12 @@ void show_library(int show) {
 
 // When the library is not shown, the process lives only for what it is doing: an install window,
 // a splash, an app it started (to report how it ended), the log window.
+bool has_work() {
+    return g_install_wnd || g_log_wnd || !g_splashes.empty() || any_runs() || installs_in_progress();
+}
+
 void maybe_quit() {
-    if (!g_main || IsWindowVisible(g_main)) return;
-    if (g_install_wnd || g_log_wnd || !g_splashes.empty() || any_runs() || any_pending()) return;
+    if (!g_main || IsWindowVisible(g_main) || has_work()) return;
     DestroyWindow(g_main);
 }
 

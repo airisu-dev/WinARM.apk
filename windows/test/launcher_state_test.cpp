@@ -1,6 +1,6 @@
 // launcher_state_test.cpp -- winapk-launcher-state-test: the launcher's state machines
-// (launcher/app_runs.h, launcher/installs.h, launcher/updates.h), which hold no lock and make no Windows call, driven
-// step by step as the library's thread and a worker's thread drive them.
+// (launcher/app_runs.h, installs.h, install_names.h, updates.h), which hold no lock and make no Windows call,
+// driven step by step as the library's thread and a worker's thread drive them.
 //
 //   winapk-launcher-state-test
 //
@@ -11,12 +11,16 @@
 // The update check and download: one check at a time; what each result leaves known and what the
 // InfoBar says of it (once per release); a failed check keeps a newer version found before; the
 // download's progress.
+// The name a file installs under: free, the same package, another package, an unknown one; the
+// generated name already taken.
 
 #include <cstdio>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "../launcher/app_runs.h"
+#include "../launcher/install_names.h"
 #include "../launcher/installs.h"
 #include "../launcher/updates.h"
 
@@ -486,12 +490,90 @@ void test_updates() {
     }
 }
 
+// The library as a table of name -> package ("": held, package unknown); a name not in it is free.
+struct Holders {
+    std::map<std::wstring, std::string> held;
+    winapk::launcher::NameHolder operator()(const std::wstring& n) const {
+        const auto it = held.find(n);
+        return it == held.end() ? winapk::launcher::NameHolder{} : winapk::launcher::NameHolder{true, it->second};
+    }
+};
+
+void test_install_names() {
+    std::printf("the name a file installs under\n");
+    using winapk::launcher::choose_install_name;
+    const std::wstring file = L"app-release";
+    {
+        Holders h;
+        const auto c = choose_install_name(file, "com.a.one", h);
+        check("a free name is used, as a new app", c.name == file && !c.update);
+        check("so is one when the file's package cannot be read", choose_install_name(file, "", h).name == file);
+    }
+    {
+        Holders h{{{file, "com.a.one"}}};
+        const auto c = choose_install_name(file, "com.a.one", h);
+        check("the same package is an update of that app", c.name == file && c.update);
+    }
+    {
+        Holders h{{{file, "com.a.one"}}};
+        const auto c = choose_install_name(file, "com.b.two", h);
+        check("another package gets a name of its own, the package", c.name == L"com.b.two" && !c.update);
+        h.held[L"com.b.two"] = "com.b.two";
+        const auto again = choose_install_name(file, "com.b.two", h);
+        check("that file again updates the app it became", again.name == L"com.b.two" && again.update);
+        check("the first file still updates its own app", choose_install_name(file, "com.a.one", h).update);
+    }
+    {
+        Holders h{{{file, "com.a.one"}, {L"com.b.two", "com.c.three"}}};
+        const auto c = choose_install_name(file, "com.b.two", h);
+        check("the package's name held by another app: numbered", c.name == L"com.b.two (2)" && !c.update);
+        h.held[L"com.b.two (2)"] = "com.d.four";
+        check("and the next free number", choose_install_name(file, "com.b.two", h).name == L"com.b.two (3)");
+        h.held[L"com.b.two (3)"] = "com.b.two";
+        const auto u = choose_install_name(file, "com.b.two", h);
+        check("a numbered name of its own package is its update", u.name == L"com.b.two (3)" && u.update);
+    }
+    {
+        Holders h{{{file, ""}}};
+        const auto c = choose_install_name(file, "com.b.two", h);
+        check("the holder's package unknown: never the same app", c.name == L"com.b.two" && !c.update);
+    }
+    {
+        Holders h{{{file, "com.a.one"}}};
+        const auto c = choose_install_name(file, "", h);
+        check("the file's package unknown: numbered beside the name, never an update",
+              c.name == file + L" (2)" && !c.update);
+        h.held[file + L" (2)"] = "";
+        check("and the next number", choose_install_name(file, "", h).name == file + L" (3)");
+    }
+    {
+        Holders h{{{file, ""}}};
+        const auto c = choose_install_name(file, "", h);
+        check("both unknown: still not the same app", !c.update && c.name == file + L" (2)");
+    }
+    {
+        Holders h{{{file, "com.a.one"}, {L"com.b.two", "x"}}};
+        for (int n = 2; n <= 100; ++n) h.held[L"com.b.two (" + std::to_wstring(n) + L")"] = "x";
+        check("no free name within reason: none, not an overwrite",
+              choose_install_name(file, "com.b.two", h).name.empty());
+    }
+    {
+        Holders h{{{file, "com.a.one"}}};
+        for (const char* bad : {"..", "a/b:c", "x.", "a..b", "1abc"}) {
+            const auto c = choose_install_name(file, bad, h);
+            check("a package that is not a package name is treated as unreadable",
+                  c.name == file + L" (2)" && !c.update);
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
     test_runs();
     test_installs();
     test_updates();
+    test_install_names();
     std::printf("%d failed\n", g_failures);
     return g_failures ? 1 : 0;
 }
