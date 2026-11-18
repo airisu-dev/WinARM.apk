@@ -62,7 +62,10 @@ windows/scripts/bake_jre.sh "$JAVA_HOME" runtime/lib runtime/jre
   `Win.apk.exe` (`launcher/launcher.rc`, through a generated
   `winapk_version.h`), which Settings shows and the update check compares with
   the newest release. The release workflow passes its tag, `win-ci.yml` the
-  newest release tag + `-dev.<run>`; the default is 0.1.0.
+  newest release tag + `-dev.<run>`; the default is 0.1.0. Release tags are
+  dated, `vYY.MMDD.N` (`v26.1118.0-preview`: the first of 2026-11-18): each
+  number must stay under 65536 (the version resource's and the installer's
+  limit), and the update check compares the three numbers only.
 - `-DWINAPK_REPO=owner/name` is the repository the update check, Report a
   problem and the project page use (default `airisu-dev/WinARM.apk`; the
   workflows pass `${{ github.repository }}`).
@@ -226,7 +229,7 @@ configuration.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
-| `.github/workflows/win-release.yml` | By hand, with a tag such as `v0.2.0-preview` | Builds and smoke-tests on `windows-11-arm`, then publishes `Win.apk-Setup-arm64.exe` and `Win.apk-windows-arm64.zip` as a pre-release with `package/RELEASE_NOTES.md` as the notes |
+| `.github/workflows/win-release.yml` | By hand, with a dated tag such as `v26.1118.0-preview` | Builds and smoke-tests on `windows-11-arm`, then publishes `Win.apk-Setup-arm64.exe` and `Win.apk-windows-arm64.zip` as a pre-release with `package/RELEASE_NOTES.md` as the notes |
 
 Inno Setup only packs files, so the packaging jobs run on `windows-latest`.
 The runtime is staged into `stage/`, never `runtime/`.
