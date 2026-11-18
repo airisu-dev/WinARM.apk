@@ -329,6 +329,15 @@ under `runtime/`):
   `ContentObserver`s of other processes through the broker (AOSP's
   `ContentService`, by authority), so the Play Store sees the Services
   Framework's settings change when a check-in finishes after it started.
+- `runtime/java/android/content/res/TypedArray.java`: a theme read of an app
+  attribute (a `0x7f` slot such as AppCompat's `windowNoTitle`) asks the whole
+  applied-style cascade for that exact key before the per-style walk, which
+  inside each style falls back to `android:X`. Android's theme is keyed by
+  attribute id, so a dialog style that sets only `android:windowNoTitle=false`
+  over an activity theme with `windowNoTitle=true` answers true there; here it
+  answered false, and AppCompat refused the dialog's window ("does not support
+  the current theme features": Waze's sign-in sheet).
+  `MACAPK_THEME_TIER_APP_ATTR_EXACT=0` restores the old walk.
 - `runtime/java/com/macapk/gms/GoogleAuthClient.java`, `AccountsService.java`:
   a sign-in from a master token fetches the account's gaia id when Google's
   answer leaves it out (a userinfo token), and the account row gets it as
