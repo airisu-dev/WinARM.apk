@@ -1,6 +1,6 @@
 // launcher_state_test.cpp -- winapk-launcher-state-test: the launcher's state machines
-// (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, clear_library.h, updates.h), which hold
-// no lock and make no Windows call, driven step by step as the library's thread and a worker's thread drive them.
+// (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, clear_library.h, updates.h, page_sync.h), which
+// hold no lock and make no Windows call, driven step by step as the library's thread and a worker's thread drive them.
 //
 //   winapk-launcher-state-test
 //
@@ -13,6 +13,7 @@
 // download's progress.
 // The name a file installs under: free, the same package, another package, an unknown one; the
 // generated name already taken.
+// A page built again on its own: when App details is due, and the hovered or Tab-focused control stays on its row.
 
 #include <cstdio>
 #include <map>
@@ -23,6 +24,7 @@
 #include "../launcher/clear_library.h"
 #include "../launcher/install_names.h"
 #include "../launcher/installs.h"
+#include "../launcher/page_sync.h"
 #include "../launcher/shortcut_rules.h"
 #include "../launcher/updates.h"
 
@@ -623,6 +625,34 @@ void test_clear_outcome() {
               many.text.find(L"Close them") != std::wstring::npos);
 }
 
+void test_page_sync() {
+    std::printf("page sync\n");
+    using winapk::launcher::details_rebuild_due;
+    using winapk::launcher::remap_target;
+    using winapk::launcher::TargetKey;
+    check("shows Stop, app started: rebuild", details_rebuild_due(false, true, false));
+    check("shows Stop, app quit: rebuild", details_rebuild_due(true, false, false));
+    check("same state: no rebuild",
+          !details_rebuild_due(true, true, false) && !details_rebuild_due(false, false, false));
+    check("a menu or dialog is up: wait", !details_rebuild_due(false, true, true));
+
+    const TargetKey orient{0, 3, L"Orientation"}, gpu{0, 3, L"GPU rendering"}, shortcut{1, 2, L"Desktop shortcut"},
+        stop{2, 1, L"Stop"}, remove{2, 1, L"Remove"};
+    const std::vector<TargetKey> idle{orient, gpu, shortcut, remove}, running{orient, gpu, shortcut, stop, remove};
+    check("Remove had focus, Stop appears before it: follows it", remap_target(idle, 3, running) == 4);
+    check("Remove had focus, Stop goes: follows it", remap_target(running, 4, idle) == 3);
+    check("a control above the change stays", remap_target(idle, 1, running) == 1);
+    check("Stop had focus and goes: the place it held", remap_target(running, 3, idle) == 3);
+    check("Stop was last and goes: held within the page",
+          remap_target({orient, stop}, 1, {orient}) == 0);
+    check("no controls left: none", remap_target({stop}, 0, {}) == -1);
+    check("no hover, back arrow, scroll bar: unchanged",
+          remap_target(idle, -1, running) == -1 && remap_target(idle, -2, running) == -2 &&
+              remap_target(idle, -3, running) == -3);
+    check("a repeated title: the same one of them",
+          remap_target({gpu, gpu, remove}, 1, {gpu, gpu, stop, remove}) == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -632,6 +662,7 @@ int main() {
     test_install_names();
     test_shortcut_rules();
     test_clear_outcome();
+    test_page_sync();
     std::printf("%d failed\n", g_failures);
     return g_failures ? 1 : 0;
 }

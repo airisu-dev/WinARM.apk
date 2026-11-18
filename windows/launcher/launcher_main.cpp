@@ -97,6 +97,7 @@
 #include "clear_library.h"
 #include "install_names.h"
 #include "installs.h"
+#include "page_sync.h"
 #include "shortcut_rules.h"
 #include "updates.h"
 #include "../host/window_fit.h"
@@ -140,6 +141,8 @@ constexpr UINT_PTR kInfoBarTimer = 2;  // the InfoBar closes itself
 constexpr UINT_PTR kUpdateTimer = 3;   // hourly: is the daily update check due?
 constexpr UINT_PTR kSetupScanTimer = 4;  // the Downloads folder settled: look for new files in it
 constexpr ULONG_PTR kCopyOpen = 0x57415031;  // WM_COPYDATA from another start of Win.apk.exe (forward_to_running)
+constexpr UINT_PTR kDetailsTimer = 5;  // App details open: has its app started or quit on its own?
+constexpr UINT kDetailsPollMs = 1500;
 constexpr UINT_PTR kAnimTimer = 1;
 constexpr int kIdSearch = 100;
 enum Cmd { kCmdOpen = 200, kCmdStop, kCmdInfo, kCmdRemove };
@@ -873,6 +876,12 @@ bool run_active(const std::wstring& name) {
     ReleaseSRWLockShared(&g_proc_lock);
     return active;
 }
+
+// Whether the app is running, started from here or on its own (a shortcut): what the tile's menu and the
+// details page show as running.
+bool app_is_running(const std::wstring& name) { return run_active(name) || app_running(name); }
+
+void details_sync(const std::wstring& name);
 
 bool any_runs() {
     AcquireSRWLockShared(&g_proc_lock);
@@ -4406,6 +4415,7 @@ void launch(const App& app) {
     }
     CloseHandle(CreateThread(nullptr, 0, run_thread, job, 0, nullptr));
     update_timer();
+    details_sync(app.name);
 }
 
 void appops_forget(const std::string& pkg);
@@ -4953,6 +4963,9 @@ struct Page {
     int reveal = -1;     // a section to scroll to the top on the next paint
 } g_page;
 
+bool g_details_running = false;  // whether the App details page built last showed its app as running
+bool g_details_timer = false;    // kDetailsTimer is set
+
 constexpr int kPageBack = -2, kPageThumb = -3;
 
 SizeF control_size(Graphics& g, const Row& row) {
@@ -5138,12 +5151,49 @@ void page_scroll(float by) {
     InvalidateRect(g_main, nullptr, FALSE);
 }
 
-// Builds the page again from what is true now (after an action, or when the language changed).
+std::vector<winapk::launcher::TargetKey> page_target_keys(const std::vector<Section>& sections) {
+    std::vector<winapk::launcher::TargetKey> keys;
+    for (size_t si = 0; si < sections.size(); ++si) {
+        for (const Row& row : sections[si].rows) {
+            if (row.kind != Row::kText) keys.push_back({static_cast<int>(si), static_cast<int>(row.kind), row.title});
+        }
+    }
+    return keys;
+}
+
+// Builds the page again from what is true now (after an action, or when the language changed). The scroll
+// position stays, and the hovered and Tab-focused controls stay on the same rows when others come or go.
 void rebuild_page() {
     if (!page_view() || !g_page.build) return;
+    const auto before = page_target_keys(g_page.sections);
     g_page.sections = g_page.build();
+    const auto after = page_target_keys(g_page.sections);
+    g_page.hot = winapk::launcher::remap_target(before, g_page.hot, after);
+    g_page.focus = winapk::launcher::remap_target(before, g_page.focus, after);
     InvalidateRect(g_main, nullptr, FALSE);
 }
+
+// App details shows Stop while its app runs: when `name` is the open page's app and what the page shows is out of date,
+// it is built again, unless a menu or a dialog is up (the timer finds it again afterwards).
+void details_sync(const std::wstring& name) {
+    if (g_view != kAppView || g_page.app != name || !g_page.build) return;
+    const bool blocked = g_menu != nullptr || !IsWindowEnabled(g_main);
+    if (winapk::launcher::details_rebuild_due(g_details_running, app_is_running(name), blocked)) rebuild_page();
+}
+
+// Only App details, while the library is on screen, looks for an app that started or quit on its own (a
+// shortcut starts it in a process of its own, which sends the library nothing).
+// `shown`: the window is on screen and not minimized; the caller says it when the window's own state lags.
+void update_details_timer(bool shown) {
+    if (g_view == kAppView && shown) {
+        if (!g_details_timer) g_details_timer = SetTimer(g_main, kDetailsTimer, kDetailsPollMs, nullptr) != 0;
+    } else if (g_details_timer) {
+        KillTimer(g_main, kDetailsTimer);
+        g_details_timer = false;
+    }
+}
+
+void update_details_timer() { update_details_timer(IsWindowVisible(g_main) && !IsIconic(g_main)); }
 
 void page_back() {
     if (g_page.back) set_view(g_page.from);
@@ -5882,6 +5932,7 @@ void start_play(const App& store) {
     CloseHandle(CreateThread(nullptr, 0, run_thread, job, 0, nullptr));
     place_play_panel();
     update_timer();
+    details_sync(store.name);
 }
 
 // Google Play in the pane: the Play Store in the window once the three apps are installed, else the setup.
@@ -6066,7 +6117,7 @@ bool update_can_start() {
     }
     std::vector<std::wstring> running;
     for (const App& a : g_apps) {
-        if (run_active(a.name) || app_running(a.name)) running.push_back(a.label);
+        if (app_is_running(a.name)) running.push_back(a.label);
     }
     if (running.size() == 1) {
         info(fmt(L"Close {0} first: the update replaces files it uses.", {running[0]}), kError);
@@ -6478,7 +6529,8 @@ void show_info(const App& app) {
                                    L"Open", [a] { open_path(app_dir(a.name)); })},
                        L""});
         std::vector<Row> manage;
-        if (run_active(a.name) || app_running(a.name)) {
+        g_details_running = app_is_running(a.name);
+        if (g_details_running) {
             manage.push_back(button_row(L"Stop", L"Closes the app at once, as Force stop does on a phone.",
                                         L"Stop", [a] {
                                             if (!stop_run(a.name)) appops::stop_runtime_of(a.apk);
@@ -7942,7 +7994,7 @@ void command(int id);
 // The tile's menu, under the app's icon and name: Open, Stop while it runs, App details, Remove.
 // Everything else is on the details page.
 void show_context_menu(const App& app, POINT pt, bool keyboard = false) {
-    const bool running = run_active(app.name) || app_running(app.name);
+    const bool running = app_is_running(app.name);
     const bool pending = is_pending(app.name);
     PopupMenu m;
     m.app = &app;
@@ -8105,6 +8157,7 @@ void set_view(View view) {
     }
     rebuild_tiles();
     update_timer();
+    update_details_timer();
 }
 
 void set_hot(const Hit& h) {
@@ -8144,7 +8197,11 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             compute_layout();
             InvalidateRect(hwnd, nullptr, FALSE);
+            update_details_timer(wp != SIZE_MINIMIZED && IsWindowVisible(hwnd));
             return 0;
+        case WM_SHOWWINDOW:  // sent before the window is shown or hidden: IsWindowVisible has not changed yet
+            update_details_timer(wp != FALSE && !IsIconic(hwnd));
+            break;
         case WM_DPICHANGED: {
             g_dpi = HIWORD(wp);
             make_fonts();
@@ -8245,6 +8302,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kInfoBarTimer) info(L"", kInfo);
             if (wp == kUpdateTimer) auto_update_check();
+            if (wp == kDetailsTimer && g_view == kAppView) details_sync(g_page.app);
             if (wp == kSetupScanTimer) {
                 KillTimer(hwnd, kSetupScanTimer);
                 if (g_view == kGmsSetupView) {
@@ -8545,6 +8603,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             const RunEnd end = finish_run(*name);
             update_timer();
+            details_sync(*name);
             InvalidateRect(hwnd, nullptr, FALSE);
             const std::wstring label = label_of(*name);
             if (*name == g_play.name &&
