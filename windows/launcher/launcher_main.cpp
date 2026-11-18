@@ -25,7 +25,8 @@
 //
 // One process serves it all: another start hands its files to the one
 // running (forward_to_running), and an APK from Explorer shows only the
-// install window, not the library.
+// install window, not the library. Closing the library only hides it while something is under way (an
+// install, a run, a Store or update download); the process quits when that is over.
 //
 // Double-clicking an app runs it (winapk-runtime --apk, without a console)
 // behind a splash that stays until the runtime says its window is up
@@ -93,7 +94,14 @@
 #include <vector>
 
 #include "app_runs.h"
+#include "clear_library.h"
+#include "install_names.h"
+#include "install_versions.h"
 #include "installs.h"
+#include "page_sync.h"
+#include "prompt_ids.h"
+#include "shortcut_rules.h"
+#include "theme_choice.h"
 #include "updates.h"
 #include "../host/window_fit.h"
 #include "../include/winapk/arch.h"
@@ -131,10 +139,13 @@ constexpr UINT kUpdateProgress = WM_APP + 14; // wParam: percent of Win.apk-Setu
 constexpr UINT kUpdateDownloaded = WM_APP + 15;  // lParam: new UpdateFile (the installer, checked, or why not)
 constexpr UINT kSetupChanged = WM_APP + 16;   // the Downloads folder changed while the Google services setup is open
 constexpr UINT kSetupChecked = WM_APP + 17;   // lParam: new SetupCheck (winapk-runtime --verify-apk's answer)
+constexpr UINT kInstallResolved = WM_APP + 18;  // lParam: new ResolveJob (a dropped file's package, read)
 constexpr UINT_PTR kInfoBarTimer = 2;  // the InfoBar closes itself
 constexpr UINT_PTR kUpdateTimer = 3;   // hourly: is the daily update check due?
 constexpr UINT_PTR kSetupScanTimer = 4;  // the Downloads folder settled: look for new files in it
 constexpr ULONG_PTR kCopyOpen = 0x57415031;  // WM_COPYDATA from another start of Win.apk.exe (forward_to_running)
+constexpr UINT_PTR kRunningTimer = 5;  // Has an app started or quit on its own? (library or App details on screen)
+constexpr UINT kRunningPollMs = 1500;
 constexpr UINT_PTR kAnimTimer = 1;
 constexpr int kIdSearch = 100;
 enum Cmd { kCmdOpen = 200, kCmdStop, kCmdInfo, kCmdRemove };
@@ -579,6 +590,52 @@ void integrate_with_windows() {
     register_file_types(false);
 }
 
+bool read_shortcut(const fs::path& lnk, std::wstring* target, std::wstring* args) {
+    IShellLinkW* link = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link)))) return false;
+    IPersistFile* file = nullptr;
+    bool ok = SUCCEEDED(link->QueryInterface(IID_PPV_ARGS(&file)));
+    if (ok) {
+        wchar_t t[MAX_PATH] = {}, a[2048] = {};
+        ok = SUCCEEDED(file->Load(lnk.c_str(), STGM_READ)) &&
+             SUCCEEDED(link->GetPath(t, MAX_PATH, nullptr, SLGP_RAWPATH)) &&
+             SUCCEEDED(link->GetArguments(a, static_cast<int>(std::size(a))));
+        if (ok) *target = t, *args = a;
+        file->Release();
+    }
+    link->Release();
+    return ok;
+}
+
+// What the uninstaller runs (Win.apk.exe --uninstall-cleanup) before it deletes the program: the apps, their
+// data and the settings stay, so what points at the program goes. A file type is released only while it is
+// still ours; a desktop shortcut only when it is an app's that starts this launcher.
+void uninstall_cleanup() {
+    for (const wchar_t* ext : kExtensions) {
+        const std::wstring sub = std::wstring(L"Software\\Classes\\") + ext;
+        if (!winapk::launcher::owns_association(reg_default(sub))) continue;
+        HKEY key = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, sub.c_str(), 0, KEY_SET_VALUE | KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+            continue;
+        RegDeleteValueW(key, L"");
+        DWORD values = 1, subkeys = 1;
+        const bool queried = RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, &subkeys, nullptr, nullptr, &values,
+                                              nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+        const bool empty = queried && !values && !subkeys;
+        RegCloseKey(key);
+        if (empty) RegDeleteKeyW(HKEY_CURRENT_USER, sub.c_str());
+    }
+    std::error_code ec;
+    const std::wstring self = exe_path().wstring();
+    for (const auto& e : fs::directory_iterator(known_folder(FOLDERID_Desktop), ec)) {
+        if (!e.is_regular_file(ec) || e.path().extension() != L".lnk") continue;
+        std::wstring target, args;
+        if (read_shortcut(e.path(), &target, &args) && winapk::launcher::is_own_app_shortcut(target, args, self))
+            fs::remove(e.path(), ec);
+    }
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+}
+
 // ---------------------------------------------------------------------------
 // The library
 
@@ -683,12 +740,17 @@ void remove_app_shortcuts(const App& app) {
 // what a shortcut holds changes. 2: Google's apps lost theirs.
 constexpr DWORD kShortcutVersion = 2;
 
+// The Start menu folder is missing after an uninstall (the apps, the settings and this version stay), so a
+// reinstall writes every app's shortcuts again, the desktop ones as the Desktop shortcut setting says.
 void refresh_app_shortcuts() {
-    if (setting(L"ShortcutVersion", 0) >= kShortcutVersion) return;
     std::error_code ec;
+    const bool menu = fs::exists(start_menu_apps(), ec);
+    if (!winapk::launcher::shortcuts_need_refresh(setting(L"ShortcutVersion", 0), kShortcutVersion, menu)) return;
+    const bool desktop_setting = setting(L"DesktopShortcut", 1) != 0;
     for (const App& app : library()) {
         const fs::path desktop = known_folder(FOLDERID_Desktop) / (file_name_safe(app.label) + L".lnk");
-        make_app_shortcuts(app, fs::exists(desktop, ec));
+        make_app_shortcuts(app,
+                           winapk::launcher::refresh_wants_desktop(menu, fs::exists(desktop, ec), desktop_setting));
     }
     set_setting(L"ShortcutVersion", kShortcutVersion);
 }
@@ -818,6 +880,19 @@ bool run_active(const std::wstring& name) {
     return active;
 }
 
+// Whether the app is running, started from here or on its own (a shortcut): what the tile's menu and the
+// details page show as running.
+bool app_is_running(const std::wstring& name) { return run_active(name) || app_running(name); }
+
+// The apps found running in a process of their own (a shortcut) by the last check; UI thread only. Painting
+// reads it instead of opening each app's mutex.
+winapk::launcher::NameSet g_own_running;
+
+// Whether the tile shows the app as running: started from here (known at once) or found running on its own.
+bool tile_running(const std::wstring& name) { return run_active(name) || g_own_running.count(name) != 0; }
+
+void details_sync(const std::wstring& name);
+
 bool any_runs() {
     AcquireSRWLockShared(&g_proc_lock);
     const bool any = !g_runs.empty();
@@ -825,6 +900,8 @@ bool any_runs() {
     return any;
 }
 
+// The apps started from here: the launcher's own work, unlike tile_running's, which holds the ones that
+// were started on their own too.
 std::vector<std::wstring> run_names() {
     AcquireSRWLockShared(&g_proc_lock);
     std::vector<std::wstring> names = g_runs.names();
@@ -1106,6 +1183,19 @@ bool install_into_library(const fs::path& source, const std::wstring& name, cons
     const bool backed_up = !same && fs::exists(target, ec) &&
                            MoveFileExW(target.c_str(), kept.c_str(), MOVEFILE_REPLACE_EXISTING) != 0;
     bool ok = same || CopyFileW(source.c_str(), target.c_str(), FALSE) != 0;
+    if (ok && !same) {
+        // The copy keeps the file's own time, and the runtime takes an install as current when its record is newer
+        // than the APK: a file older than the last install (an older version, say) would be left unconverted.
+        FILETIME now;
+        GetSystemTimeAsFileTime(&now);
+        const HANDLE h = CreateFileW(target.c_str(), FILE_WRITE_ATTRIBUTES,
+                                     FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                                     FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) {
+            SetFileTime(h, nullptr, nullptr, &now);
+            CloseHandle(h);
+        }
+    }
     // The install writes the new version's icon first (so that it shows while the code is converted):
     // an update keeps the app's own beside it, to put back if the update does not go through.
     const fs::path icon = app_dir(name) / L"icon.png", icon_kept = app_dir(name) / L"icon.png.previous";
@@ -2213,8 +2303,9 @@ bool windows_uses_dark() {
 }
 
 void pick_theme() {
-    const DWORD pref = setting(L"Theme", 0);  // 0 as Windows, 1 light, 2 dark
-    const bool dark = pref == 2 || (pref == 0 && windows_uses_dark());
+    using winapk::launcher::ThemeChoice;
+    const ThemeChoice pref = winapk::launcher::theme_choice(setting(L"Theme", 0));
+    const bool dark = pref == ThemeChoice::kDark || (pref == ThemeChoice::kFollowWindows && windows_uses_dark());
     // Windows 11's own neutrals; the accent is the blue of the program's icon,
     // on dark backgrounds the lighter tint Windows uses there, with dark text.
     g_t = dark ? Theme{true,         hex(0x202020), hex(0x272727), hex(0x2D2D2D), hex(0x383838), hex(0x3D3D3D),
@@ -2643,6 +2734,7 @@ void fit_install_window();
 std::wstring install_failure_reason(const fs::path& log);
 void show_library(int show);
 void maybe_quit();
+bool has_work();
 struct Splash;
 
 const App* find_app(const std::wstring& name) {
@@ -3241,7 +3333,7 @@ void paint_toolbar(Graphics& g) {
     } else {
         size_t shown = 0, running = 0;  // the library's own apps: not Google's system components
         for (const Tile& tile : g_tiles) shown += tile.app >= 0;
-        for (const std::wstring& r : run_names()) running += !system_app(r);
+        running = winapk::launcher::running_count(run_names(), g_own_running, system_app);
         sub = shown == 0 ? std::wstring(L"No apps installed yet") : app_count(shown);
         if (running) sub += L"  ·  " + fmt(L"{0} running", {std::to_wstring(running)});
         if (const std::wstring now = current_install(); !now.empty()) {
@@ -3287,7 +3379,7 @@ void paint_tile(Graphics& g, int i) {
     const App* app = t.app >= 0 ? &g_apps[static_cast<size_t>(t.app)] : nullptr;
     const bool sel = app && app->name == g_selected;
     const bool hot = g_hot.kind == kHitTile && g_hot.tile == i;
-    const bool running = app && run_active(app->name);
+    const bool running = app && tile_running(app->name);
     if (sel) {
         fill_round(g, r, px(kRadiusTile), with_alpha(g_t.accent, g_t.dark ? 56 : 30));
         stroke_round(g, r, px(kRadiusTile), with_alpha(g_t.accent, 170));
@@ -3538,11 +3630,12 @@ void update_timer() {
 // when it is about one app; then the question, at most a sentence saying what it means, switches or a
 // check box when there is something to pick, and the buttons: the accent one first, as Windows orders
 // them, stacked full width for an app's question as Android's are, else right-aligned in a footer.
-// Esc and the caption's close are no answer (0).
+// Esc and the caption's close are no answer (0). Enter presses the focused button, else the default one; Space
+// acts on the focused control, so it toggles a check box only while that has the focus (prompt_ids.h).
 
 constexpr UINT kAskTimeoutMs = 300 * 1000;  // an app's question: no answer in five minutes changes nothing
 
-constexpr int kPromptLink = 0x7000;  // the link's target id: past any switch's, and no button uses it
+constexpr int kPromptLink = winapk::launcher::kPromptLinkId;
 
 struct Prompt {
     std::wstring app, question, note;
@@ -3562,7 +3655,7 @@ struct Prompt {
     int default_id = 0;    // Enter
     int pressed = 0;       // the answer; 0: closed or timed out
     HWND window = nullptr, near_window = nullptr, owner = nullptr;
-    Targets targets;       // ids: a button's own, or 1 + index for a switch
+    Targets targets;       // ids: a button's own, prompt_switch_id(i) for a switch, or kPromptLink
     int hot = 0, focus = 0;
     bool tracking = false;
 };
@@ -3603,7 +3696,7 @@ float layout_prompt(Graphics& g, Prompt& p, float W, bool draw) {
     if (checks) {
         y += px(10);
         for (size_t i = 0; i < p.switches.size(); ++i) {
-            const int id = 1 + static_cast<int>(i);
+            const int id = winapk::launcher::prompt_switch_id(i);
             const float th = (std::max)(px(20), text_height(g, p.switches[i].title, g_f.body.get(), cw - px(30)) + px(2));
             const RectF row(m, y, cw, th + px(8)), box(m, y + px(4), px(20), px(20));
             p.targets.push_back({row, id});
@@ -3622,7 +3715,7 @@ float layout_prompt(Graphics& g, Prompt& p, float W, bool draw) {
         if (draw) fill_round(g, card, px(kRadiusCard), g_t.card);
         for (size_t i = 0; i < p.switches.size(); ++i) {
             const RectF r(m, y + i * rh, cw, rh);
-            const int id = 1 + static_cast<int>(i);
+            const int id = winapk::launcher::prompt_switch_id(i);
             p.targets.push_back({r, id});
             if (!draw) continue;
             if (p.hot == id) {
@@ -3690,18 +3783,21 @@ void close_prompt(Prompt& p) {
 }
 
 void prompt_answer(Prompt& p, int id) {
-    if (id <= 0) return;
-    if (id == kPromptLink) {
-        if (p.on_link) p.on_link();
-        return;
+    const winapk::launcher::PromptStep s = winapk::launcher::prompt_step(id, p.switches.size());
+    switch (s.act) {
+        case winapk::launcher::PromptAct::kNone: return;
+        case winapk::launcher::PromptAct::kLink:
+            if (p.on_link) p.on_link();
+            return;
+        case winapk::launcher::PromptAct::kToggle:
+            p.switches[s.index].on = !p.switches[s.index].on;
+            InvalidateRect(p.window, nullptr, FALSE);
+            return;
+        case winapk::launcher::PromptAct::kPress:
+            p.pressed = s.id;
+            close_prompt(p);
+            return;
     }
-    if (id <= static_cast<int>(p.switches.size())) {
-        p.switches[static_cast<size_t>(id - 1)].on = !p.switches[static_cast<size_t>(id - 1)].on;
-        InvalidateRect(p.window, nullptr, FALSE);
-        return;
-    }
-    p.pressed = id;
-    close_prompt(p);
 }
 
 LRESULT CALLBACK prompt_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -3733,7 +3829,7 @@ LRESULT CALLBACK prompt_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == VK_ESCAPE) {
                 close_prompt(*p);
             } else if (wp == VK_RETURN) {
-                prompt_answer(*p, p->focus ? p->focus : p->default_id);
+                prompt_answer(*p, winapk::launcher::prompt_enter_target(p->focus, p->default_id));
             } else if (wp == VK_SPACE && p->focus) {
                 prompt_answer(*p, p->focus);
             } else if (wp == VK_TAB || wp == VK_UP || wp == VK_DOWN || wp == VK_LEFT || wp == VK_RIGHT) {
@@ -4121,14 +4217,156 @@ std::wstring install_name(const fs::path& source) {
     return file_name_safe(name);
 }
 
-// Queues an install. The store's (`from_store`) installs a download it then
+// What an app file says of itself.
+struct PackageRead {
+    std::string package;  // empty when it cannot be read
+    winapk::launcher::AppVersion version;
+};
+
+// A file's package and version: winapk-runtime --package-to, which for a bundle reads its base APK, and
+// gives both in one start. Waits for the runtime, so only a worker calls it.
+PackageRead read_package(const fs::path& file) {
+    static unsigned counter = 0;  // the resolver thread's only
+    std::error_code ec;
+    const fs::path out = data_dir() / L"staging" /
+                         (L"package-launcher-" + std::to_wstring(GetCurrentProcessId()) + L"-" +
+                          std::to_wstring(++counter) + L".txt");
+    fs::create_directories(out.parent_path(), ec);
+    HANDLE p = start_runtime(L"--apk \"" + file.wstring() + L"\" --package-to \"" + out.wstring() + L"\"",
+                             logs_dir() / L"package-probe.log");
+    std::vector<std::string> lines;
+    if (p) {
+        // A runtime that hangs would hold up every file behind this one.
+        const bool done = WaitForSingleObject(p, 60000) == WAIT_OBJECT_0;
+        DWORD code = 1;
+        if (done) GetExitCodeProcess(p, &code);
+        else TerminateProcess(p, 1);
+        CloseHandle(p);
+        if (done && code == 0) {
+            std::ifstream f(out, std::ios::binary);
+            for (std::string line; lines.size() < 3 && std::getline(f, line);) {
+                while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+                lines.push_back(line);
+            }
+        }
+    }
+    fs::remove(out, ec);
+    PackageRead r;
+    if (lines.empty() || lines[0].empty()) return r;
+    r.package = lines[0];
+    r.version = winapk::launcher::version_from_lines(lines, false);
+    return r;
+}
+
+// A file waiting to be named: what its install needs to know of it, read off the library's thread
+// (reading a package starts the runtime).
+struct ResolveJob {
+    fs::path source;
+    std::wstring wanted;         // install_name(source)
+    std::string package;         // the file's own; empty when it cannot be read
+    winapk::launcher::AppVersion version;  // the file's own; not known when it cannot be read
+    std::string wanted_package;  // the package of the app that holds `wanted`, when it has no .package file
+};
+
+SRWLOCK g_resolve_lock = SRWLOCK_INIT;  // guards the queue and the flag
+std::deque<std::unique_ptr<ResolveJob>> g_resolve_queue;
+bool g_resolve_running = false;  // the worker is alive; it clears this under the lock when the queue is empty
+std::set<std::wstring> g_resolving;  // the files in the queue or being read, by source_key (the library's thread)
+
+// An install is queued or under way, or a file is still being read to become one.
+bool installs_in_progress() { return any_pending() || !g_resolving.empty(); }
+// The package and version of each install queued from here, by name, until its end: a later file of that name is
+// compared with it, as the .package file only comes with the install's end (the library's thread).
+struct QueuedInstall {
+    std::string package;
+    winapk::launcher::AppVersion version;
+};
+std::map<std::wstring, QueuedInstall> g_queued_installs;
+
+std::wstring source_key(const fs::path& source) {
+    std::error_code ec;
+    std::wstring key = fs::absolute(source, ec).lexically_normal().wstring();
+    for (wchar_t& c : key) c = static_cast<wchar_t>(towlower(c));
+    return key;
+}
+
+DWORD WINAPI resolve_thread(void*) {
+    for (;;) {
+        std::unique_ptr<ResolveJob> job;
+        AcquireSRWLockExclusive(&g_resolve_lock);
+        if (!g_resolve_queue.empty()) {
+            job = std::move(g_resolve_queue.front());
+            g_resolve_queue.pop_front();
+        } else {
+            g_resolve_running = false;
+        }
+        ReleaseSRWLockExclusive(&g_resolve_lock);
+        if (!job) return 0;
+        if (job->package.empty()) {
+            PackageRead r = read_package(job->source);
+            job->package = std::move(r.package);
+            job->version = std::move(r.version);
+        }
+        // An app from before the library kept packages (backfill_thread has yet to reach it).
+        std::error_code ec;
+        const std::vector<std::string> known = package_of(job->wanted);
+        if (fs::exists(label_file(job->wanted), ec) && (known.empty() || known[0].empty())) {
+            for (const wchar_t* ext : kExtensions) {
+                const fs::path apk = library_dir() / (job->wanted + ext);
+                if (fs::is_regular_file(apk, ec)) {
+                    job->wanted_package = read_package(apk).package;
+                    break;
+                }
+            }
+        }
+        // Fails only once g_main is destroyed, and then the program is ending.
+        if (PostMessageW(g_main, kInstallResolved, 0, reinterpret_cast<LPARAM>(job.get()))) job.release();
+    }
+}
+
+// The package of the install queued under `name` (compared as the file system does), or empty.
+const QueuedInstall* queued_install(const std::wstring& name) {
+    for (const auto& q : g_queued_installs) {
+        if (_wcsicmp(q.first.c_str(), name.c_str()) == 0) return &q.second;
+    }
+    return nullptr;
+}
+
+std::string queued_package(const std::wstring& name) {
+    const QueuedInstall* q = queued_install(name);
+    return q ? q->package : std::string();
+}
+
+// Who has a library name: an install queued from here, or an app (or what an interrupted install
+// left of one) in the library. `hint` is a name whose package `hint_package` was read from its APK.
+winapk::launcher::NameHolder name_holder(const std::wstring& name, const std::wstring& hint,
+                                         const std::string& hint_package) {
+    winapk::launcher::NameHolder h;
+    std::error_code ec;
+    bool pending = false;
+    for (const std::wstring& p : pending_names()) pending = pending || _wcsicmp(p.c_str(), name.c_str()) == 0;
+    bool held = pending || fs::exists(label_file(name), ec);
+    for (const wchar_t* ext : kExtensions) held = held || fs::exists(library_dir() / (name + ext), ec);
+    if (!held) return h;
+    h.taken = true;
+    h.package = queued_package(name);
+    if (h.package.empty()) {
+        const std::vector<std::string> p = package_of(name);
+        if (!p.empty()) h.package = p[0];
+    }
+    if (h.package.empty() && _wcsicmp(name.c_str(), hint.c_str()) == 0) h.package = hint_package;
+    return h;
+}
+
+// Queues an install under `name`. The store's (`from_store`) installs a download it then
 // removes, and shows its progress on the app's card rather than in the
-// install window.
-void install(const fs::path& source, std::wstring name = L"", fs::path replaces = {}, bool from_store = false) {
-    if (name.empty()) name = install_name(source);
+// install window. `package` is the file's, when known.
+void queue_install(const fs::path& source, const std::wstring& name, fs::path replaces, bool from_store,
+                   const std::string& package, const winapk::launcher::AppVersion& version = {}) {
     if (is_pending(name)) return;  // the same file twice
     if (!any_pending() && !g_install_wnd) g_jobs.clear();
     begin_install(name);
+    if (!package.empty()) g_queued_installs[name] = {package, version};
     Job job{name};
     job.file = source.filename().wstring();
     job.update = find_app(name) != nullptr;
@@ -4138,6 +4376,114 @@ void install(const fs::path& source, std::wstring name = L"", fs::path replaces 
     update_timer();
     rebuild_tiles();
     if (!from_store || g_install_wnd) show_install_window();
+}
+
+// Installs a file. Without a `name` (a file the user gave) the name is decided once its package is
+// read, on a worker, so that a file whose name an app of another package holds does not replace
+// that app (install_names.h): kInstallResolved then calls install_resolved. With one, the caller
+// knows the app: the store's, and the setup page's.
+void install(const fs::path& source, std::wstring name = L"", fs::path replaces = {}, bool from_store = false,
+             std::string package = "") {
+    if (!name.empty()) {
+        queue_install(source, name, replaces, from_store, package);
+        return;
+    }
+    if (!g_resolving.insert(source_key(source)).second) return;  // the same file twice, still being read
+    auto job = std::make_unique<ResolveJob>();
+    job->source = source;
+    job->wanted = install_name(source);
+    job->package = std::move(package);
+    AcquireSRWLockExclusive(&g_resolve_lock);
+    g_resolve_queue.push_back(std::move(job));
+    const bool start = !g_resolve_running;
+    g_resolve_running = true;
+    ReleaseSRWLockExclusive(&g_resolve_lock);
+    if (!start) return;
+    if (HANDLE t = CreateThread(nullptr, 0, resolve_thread, nullptr, 0, nullptr)) {
+        CloseHandle(t);
+        return;
+    }
+    AcquireSRWLockExclusive(&g_resolve_lock);
+    g_resolve_queue.clear();
+    g_resolve_running = false;
+    ReleaseSRWLockExclusive(&g_resolve_lock);
+    g_resolving.erase(source_key(source));
+    info(fmt(L"{0} could not be installed.", {source.filename().wstring()}), kError);
+}
+
+// The version `name` is at: the install queued under it, else what its install recorded (an app installed
+// before the library kept versions has none, and is not known).
+winapk::launcher::AppVersion installed_version(const std::wstring& name) {
+    if (const QueuedInstall* q = queued_install(name); q && q->version.known) return q->version;
+    return winapk::launcher::version_from_lines(package_of(name), true);
+}
+
+// Asks whether to go back to an older version of the app held under `name`. Declined is the default (Enter, Esc
+// and the caption's close): an older file replaces a newer install only when the user says so.
+bool downgrade_accepted(const fs::path& file, const std::wstring& name, const winapk::launcher::AppVersion& older,
+                        const winapk::launcher::AppVersion& installed) {
+    Prompt p;
+    p.app = label_of(name);
+    p.icon = rounded_icon(app_dir(name) / L"icon.png", ipx(40));
+    p.question = fmt(L"Install an older version of {0}?", {p.app});
+    p.note = fmt(L"{0} is version {1}, and version {2} is installed. An older version may not work with the data "
+                 L"the newer one saved.",
+                 {file.filename().wstring(), utf8_to_wide(winapk::launcher::describe_version(older)),
+                  utf8_to_wide(winapk::launcher::describe_version(installed))});
+    p.buttons = {{IDOK, L"Install older version"}, {IDCANCEL, L"Keep installed version"}};
+    p.default_id = IDCANCEL;
+    return run_dialog(p, owner()) == IDOK;
+}
+
+// An older file than the installed app is queued only if the user agrees.
+void decide_install(const ResolveJob& j) {
+    const auto choose = [&] {
+        return winapk::launcher::choose_install_name(
+            j.wanted, j.package, [&](const std::wstring& n) { return name_holder(n, j.wanted, j.wanted_package); });
+    };
+    winapk::launcher::NameChoice choice = choose();
+    if (choice.name.empty()) {
+        info(fmt(L"{0} could not be installed: too many apps have its name.", {j.source.filename().wstring()}),
+             kError);
+        return;
+    }
+    if (choice.update) {
+        const winapk::launcher::AppVersion installed = installed_version(choice.name);
+        if (winapk::launcher::is_downgrade(j.version, installed)) {
+            if (!downgrade_accepted(j.source, choice.name, j.version, installed)) return;
+            // The question ran the messages: an install may have ended or been queued, an app removed.
+            choice = choose();
+            if (choice.name.empty() || is_pending(choice.name)) {
+                info(fmt(L"{0} could not be installed now: the app is being installed. Open it again afterwards.",
+                         {j.source.filename().wstring()}),
+                     kError);
+                return;
+            }
+        }
+    }
+    queue_install(j.source, choice.name, {}, false, j.package, j.version);
+}
+
+// Files read and waiting for their name or, for an older one, an answer (the library's thread).
+std::deque<std::unique_ptr<ResolveJob>> g_resolved;
+bool g_deciding = false;
+
+// kInstallResolved. The question for an older file runs the
+// messages while it is up, which brings the next file here: it waits its turn, so that only one question is
+// open. Each file stays in g_resolving until it is decided, which keeps the process alive meanwhile.
+void install_resolved(std::unique_ptr<ResolveJob> job) {
+    g_resolved.push_back(std::move(job));
+    if (g_deciding) return;
+    struct Deciding {
+        Deciding() { g_deciding = true; }
+        ~Deciding() { g_deciding = false; }
+    } deciding;
+    while (!g_resolved.empty()) {
+        const std::unique_ptr<ResolveJob> next = std::move(g_resolved.front());
+        g_resolved.pop_front();
+        decide_install(*next);
+        g_resolving.erase(source_key(next->source));
+    }
 }
 
 void add_from_dialog() {
@@ -4187,6 +4533,7 @@ void launch(const App& app) {
     }
     CloseHandle(CreateThread(nullptr, 0, run_thread, job, 0, nullptr));
     update_timer();
+    details_sync(app.name);
 }
 
 void appops_forget(const std::string& pkg);
@@ -4271,17 +4618,31 @@ bool confirm_remove(const App& a, bool* with_data) {
     return true;
 }
 
-// Removes the app (asking first when `ask`); `with_data` also deletes what it saved.
-bool remove_app(const App& app, bool ask, bool with_data = false) {
-    if (ask && !confirm_remove(app, &with_data)) return false;
-    const App copy = app;  // `app` may point into g_apps, which refresh() replaces
+enum class Removal {
+    kRemoved,
+    kBusy,    // it runs and could not be stopped: nothing changed
+    kLocked,  // its APK could not be deleted: the app stays in the library
+};
+
+// Removes the app and, with `with_data`, what it saved; no question and no message. The APK goes first: it is
+// what keeps the app in the library, so an app that cannot be removed stays whole.
+Removal remove_app_now(const App& copy, bool with_data) {
     std::error_code ec;
+    bool stopped = false;
     if (app_running(copy.name)) {
-        if (!appops::stop_runtime_of(copy.apk)) {
-            info(fmt(L"Close {0} first, then remove it.", {copy.label}), kError);
-            return false;
-        }
+        if (!appops::stop_runtime_of(copy.apk)) return Removal::kBusy;
         expect_run_end(copy.name);  // started from here: its exit is the removal, not a failure
+        stopped = true;
+    }
+    // A read-only APK (a downloaded file) is no reason to keep it. A runtime just ended can hold the APK for a
+    // moment longer: wait for that, about 0.5 s at most.
+    SetFileAttributesW(copy.apk.c_str(), FILE_ATTRIBUTE_NORMAL);
+    for (int tries = 0;; ++tries) {
+        ec.clear();
+        fs::remove(copy.apk, ec);
+        if (!ec) break;
+        if (!stopped || tries >= 10) return Removal::kLocked;
+        Sleep(50);
     }
     // Its permissions go with it, unless another copy in the library is the same package.
     const std::vector<std::string> pkg = package_of(copy.name);
@@ -4297,9 +4658,24 @@ bool remove_app(const App& app, bool ask, bool with_data = false) {
         if (!other && with_data) remove_app_data(pkg[0], others);
     }
     remove_app_shortcuts(copy);
-    fs::remove(copy.apk, ec);
     remove_app_files(copy.name);
     write_registry();
+    return Removal::kRemoved;
+}
+
+// Removes the app (asking first when `ask`); `with_data` also deletes what it saved.
+bool remove_app(const App& app, bool ask, bool with_data = false) {
+    if (ask && !confirm_remove(app, &with_data)) return false;
+    const App copy = app;  // `app` may point into g_apps, which refresh() replaces
+    switch (remove_app_now(copy, with_data)) {
+        case Removal::kBusy:
+            info(fmt(L"Close {0} first, then remove it.", {copy.label}), kError);
+            return false;
+        case Removal::kLocked:
+            info(fmt(L"{0} could not be removed. Close it and try again.", {copy.label}), kError);
+            return false;
+        case Removal::kRemoved: break;
+    }
     if (ask) {
         refresh();
         if (g_view == kAppView) set_view(kLibraryView);
@@ -4339,11 +4715,17 @@ void store_get(const StoreApp& a) {
     const Offer offer = offer_for(a);
     if (offer != kOfferInstall && offer != kOfferUpdate) return;
     if (!is_package_name(a.pkg) || !is_repo_file_name(a.apk)) return;
+    // An entry in downloads keeps the process alive while the library is hidden, so it exists only with a thread.
+    auto* d = new Download{a.pkg, a.sha256, std::wstring(kRepo) + utf8_to_wide(a.apk), a.name,
+                           downloads_dir() / utf8_to_wide(a.apk)};
+    HANDLE t = CreateThread(nullptr, 0, download_thread, d, 0, nullptr);
+    if (!t) {
+        delete d;
+        info(fmt(L"Downloading {0} failed. Check the internet connection, then try again.", {a.name}), kError);
+        return;
+    }
+    CloseHandle(t);
     g_store.downloads[a.pkg] = -1;
-    CloseHandle(CreateThread(nullptr, 0, download_thread,
-                             new Download{a.pkg, a.sha256, std::wstring(kRepo) + utf8_to_wide(a.apk), a.name,
-                                          downloads_dir() / utf8_to_wide(a.apk)},
-                             0, nullptr));
     info(fmt(L"Downloading {0}…", {a.name}), kInfo);
     InvalidateRect(g_main, nullptr, FALSE);
 }
@@ -4354,13 +4736,24 @@ void store_downloaded(const Download& d, bool ok) {
     g_store.downloads.erase(d.pkg);
     if (!ok) {
         info(fmt(L"Downloading {0} failed. Check the internet connection, then try again.", {d.label}), kError);
+        maybe_quit();
         return;
     }
     const auto it = g_store.installed.find(d.pkg);
     const App* existing = it == g_store.installed.end() ? nullptr : find_app(it->second.first);
-    const std::wstring name = existing ? existing->name : file_name_safe(utf8_to_wide(d.pkg));
+    // A new app's name is its package, unless an app of another package has that name already.
+    const std::wstring name = existing ? existing->name
+                                       : winapk::launcher::choose_install_name(
+                                             file_name_safe(utf8_to_wide(d.pkg)), d.pkg,
+                                             [](const std::wstring& n) { return name_holder(n, L"", ""); })
+                                             .name;
+    if (name.empty()) {
+        info(fmt(L"{0} could not be installed: too many apps have its name.", {d.label}), kError);
+        maybe_quit();
+        return;
+    }
     if (!existing) g_job_labels[name] = d.label;
-    install(d.file, name, existing ? existing->apk : fs::path(), true);
+    install(d.file, name, existing ? existing->apk : fs::path(), true, d.pkg);
 }
 
 // ---------------------------------------------------------------------------
@@ -4688,6 +5081,9 @@ struct Page {
     int reveal = -1;     // a section to scroll to the top on the next paint
 } g_page;
 
+bool g_details_running = false;  // whether the App details page built last showed its app as running
+bool g_running_timer = false;  // kRunningTimer is set
+
 constexpr int kPageBack = -2, kPageThumb = -3;
 
 SizeF control_size(Graphics& g, const Row& row) {
@@ -4873,12 +5269,64 @@ void page_scroll(float by) {
     InvalidateRect(g_main, nullptr, FALSE);
 }
 
-// Builds the page again from what is true now (after an action, or when the language changed).
+std::vector<winapk::launcher::TargetKey> page_target_keys(const std::vector<Section>& sections) {
+    std::vector<winapk::launcher::TargetKey> keys;
+    for (size_t si = 0; si < sections.size(); ++si) {
+        for (const Row& row : sections[si].rows) {
+            if (row.kind != Row::kText) keys.push_back({static_cast<int>(si), static_cast<int>(row.kind), row.title});
+        }
+    }
+    return keys;
+}
+
+// Builds the page again from what is true now (after an action, or when the language changed). The scroll
+// position stays, and the hovered and Tab-focused controls stay on the same rows when others come or go.
 void rebuild_page() {
     if (!page_view() || !g_page.build) return;
+    const auto before = page_target_keys(g_page.sections);
     g_page.sections = g_page.build();
+    const auto after = page_target_keys(g_page.sections);
+    g_page.hot = winapk::launcher::remap_target(before, g_page.hot, after);
+    g_page.focus = winapk::launcher::remap_target(before, g_page.focus, after);
     InvalidateRect(g_main, nullptr, FALSE);
 }
+
+// App details shows Stop while its app runs: when `name` is the open page's app and what the page shows is out of date,
+// it is built again, unless a menu or a dialog is up (the timer finds it again afterwards).
+void details_sync(const std::wstring& name) {
+    if (g_view != kAppView || g_page.app != name || !g_page.build) return;
+    const bool blocked = g_menu != nullptr || !IsWindowEnabled(g_main);
+    if (winapk::launcher::details_rebuild_due(g_details_running, app_is_running(name), blocked)) rebuild_page();
+}
+
+// Looks for the library's apps that run in a process of their own; repaints only when that set changed.
+void refresh_own_running() {
+    winapk::launcher::NameSet now;
+    for (const App& a : g_apps) {
+        // system_app reads a file, so the cheap mutex check goes first.
+        if (app_running(a.name) && !system_app(a.name)) now.insert(a.name);
+    }
+    if (winapk::launcher::replace_if_changed(g_own_running, std::move(now)) && g_view == kLibraryView) {
+        InvalidateRect(g_main, nullptr, FALSE);
+    }
+}
+
+// Only the library and App details, while on screen, look for an app that started or quit on its own (a
+// shortcut starts it in a process of its own, which sends the library nothing).
+// `shown`: the window is on screen and not minimized; the caller says it when the window's own state lags.
+void update_running_timer(bool shown) {
+    if ((g_view == kAppView || g_view == kLibraryView) && shown) {
+        if (!g_running_timer) {
+            g_running_timer = SetTimer(g_main, kRunningTimer, kRunningPollMs, nullptr) != 0;
+            if (g_running_timer) refresh_own_running();  // what changed while it was off
+        }
+    } else if (g_running_timer) {
+        KillTimer(g_main, kRunningTimer);
+        g_running_timer = false;
+    }
+}
+
+void update_running_timer() { update_running_timer(IsWindowVisible(g_main) && !IsIconic(g_main)); }
 
 void page_back() {
     if (g_page.back) set_view(g_page.from);
@@ -5445,10 +5893,16 @@ void setup_checked(std::unique_ptr<SetupCheck> c) {
                            {file, std::to_wstring(c->min_sdk), std::to_wstring(c->sdk)}),
                        setup_log());
     } else {
-        const std::wstring name = install_name(c->file);
-        g_setup.installing[c->pkg] = name;
-        g_setup_names.insert(name);
-        install(c->file, name);
+        // The package is read already, so the name is decided here, not by install()'s worker.
+        const std::wstring name = winapk::launcher::choose_install_name(
+            install_name(c->file), c->pkg, [](const std::wstring& n) { return name_holder(n, L"", ""); }).name;
+        if (name.empty()) {
+            info(fmt(L"{0} could not be installed: too many apps have its name.", {file}), kError);
+        } else {
+            g_setup.installing[c->pkg] = name;
+            g_setup_names.insert(name);
+            install(c->file, name, {}, false, c->pkg);
+        }
     }
     if (g_view == kGmsSetupView) rebuild_page();
     setup_next();
@@ -5611,6 +6065,7 @@ void start_play(const App& store) {
     CloseHandle(CreateThread(nullptr, 0, run_thread, job, 0, nullptr));
     place_play_panel();
     update_timer();
+    details_sync(store.name);
 }
 
 // Google Play in the pane: the Play Store in the window once the three apps are installed, else the setup.
@@ -5718,6 +6173,18 @@ void remove_old_setups() {
     }
 }
 
+// What a download killed half way (the process ended, the power went) leaves: <file>.part. http_get starts
+// a download over and never resumes one. Run at start by the library's process (the one that passed
+// forward_to_running), before any download of this run exists.
+void remove_partial_downloads() {
+    for (const fs::path& dir : {downloads_dir(), updates_dir()}) {
+        std::error_code ec;
+        for (fs::directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec)) {
+            if (it->path().extension() == L".part") fs::remove(it->path(), ec);
+        }
+    }
+}
+
 // `fetch` asks GitHub; else only the answer kept from the last check is read (at start, within the day).
 void start_update_check(bool fetch, bool manual) {
     if (!g_update.begin_check(fetch)) return;  // one runs already
@@ -5777,13 +6244,13 @@ void update_checked(UpdateCheck& c) {
 // Whether the installer may run now, else says why in the InfoBar: it replaces the runtime that running apps
 // use and the launcher that installs go through.
 bool update_can_start() {
-    if (installs_active() || any_pending() || !g_store.downloads.empty()) {
+    if (installs_active() || installs_in_progress() || !g_store.downloads.empty()) {
         info(L"Wait for the installs to finish, then update Win.apk.", kError);
         return false;
     }
     std::vector<std::wstring> running;
     for (const App& a : g_apps) {
-        if (run_active(a.name) || app_running(a.name)) running.push_back(a.label);
+        if (app_is_running(a.name)) running.push_back(a.label);
     }
     if (running.size() == 1) {
         info(fmt(L"Close {0} first: the update replaces files it uses.", {running[0]}), kError);
@@ -5853,7 +6320,15 @@ void start_update() {
 
 void update_downloaded(std::unique_ptr<UpdateFile> u) {
     g_update.downloaded();
-    if (u->result == UpdateFile::kReady && run_installer(*u)) return;  // the library is gone
+    using winapk::launcher::InstallerDownloaded;
+    const InstallerDownloaded action =
+        winapk::launcher::installer_downloaded(IsWindowVisible(g_main), u->result == UpdateFile::kReady);
+    if (action == InstallerDownloaded::kKeep) {
+        // u closes its handle on return; the checked file stays for the next "Update".
+        maybe_quit();
+        return;
+    }
+    if (action == InstallerDownloaded::kRun && run_installer(*u)) return;  // the library is gone
     switch (u->result) {
         case UpdateFile::kNotDownloaded:
             info(L"Couldn't download the update. Check the internet connection.", kError);
@@ -5868,6 +6343,7 @@ void update_downloaded(std::unique_ptr<UpdateFile> u) {
             break;  // run_installer said why it did not start
     }
     if (g_view == kSettingsView) rebuild_page();
+    maybe_quit();
 }
 
 // The Update button shows how far the download is; changed in place, since a rebuild asks the runtime for the
@@ -5952,7 +6428,7 @@ std::vector<Section> settings_sections() {
     theme.kind = Row::kChoice;
     theme.title = L"Theme";
     theme.choices = {L"Follow Windows", L"Light", L"Dark"};  // the setting's 0, 1, 2
-    theme.choice = static_cast<int>((std::min)(setting(L"Theme", 0), 2ul));
+    theme.choice = static_cast<int>(winapk::launcher::theme_choice(setting(L"Theme", 0)));
     theme.act = [](int i) {
         set_setting(L"Theme", static_cast<DWORD>(i));
         apply_theme();
@@ -6025,18 +6501,22 @@ std::vector<Section> settings_sections() {
         if (!system_app(a.name)) own.push_back(a);
     if (!own.empty()) {
         trouble.push_back(button_row(L"Clear library",
-                                     L"Uninstalls every app and removes its shortcuts. App data is kept.",
+                                     L"Uninstalls every app and removes its shortcuts. App data is kept; permissions "
+                                        L"are reset.",
                                      L"Clear…", [own] {
                                          if (!confirm(L"Clear the library?",
                                                       fmt(L"All {0} apps and their shortcuts will be removed. App "
-                                                          L"data is kept.",
+                                                          L"data is kept, permissions are reset.",
                                                           {std::to_wstring(own.size())}),
                                                       L"Clear library")) {
                                              return;
                                          }
-                                         for (const App& a : own) remove_app(a, false);
+                                         std::vector<std::wstring> left;
+                                         for (const App& a : own)
+                                             if (remove_app_now(a, false) != Removal::kRemoved) left.push_back(a.label);
                                          refresh();
-                                         info(L"The library was cleared.", kInfo);
+                                         const auto end = winapk::launcher::clear_outcome(left);
+                                         info(end.text, end.ok ? kInfo : kError);
                                      },
                                      true));
     }
@@ -6182,7 +6662,8 @@ void show_info(const App& app) {
                                    L"Open", [a] { open_path(app_dir(a.name)); })},
                        L""});
         std::vector<Row> manage;
-        if (run_active(a.name) || app_running(a.name)) {
+        g_details_running = app_is_running(a.name);
+        if (g_details_running) {
             manage.push_back(button_row(L"Stop", L"Closes the app at once, as Force stop does on a phone.",
                                         L"Stop", [a] {
                                             if (!stop_run(a.name)) appops::stop_runtime_of(a.apk);
@@ -7646,7 +8127,8 @@ void command(int id);
 // The tile's menu, under the app's icon and name: Open, Stop while it runs, App details, Remove.
 // Everything else is on the details page.
 void show_context_menu(const App& app, POINT pt, bool keyboard = false) {
-    const bool running = run_active(app.name) || app_running(app.name);
+    refresh_own_running();  // the tile behind the menu shows what the menu says
+    const bool running = app_is_running(app.name);
     const bool pending = is_pending(app.name);
     PopupMenu m;
     m.app = &app;
@@ -7721,7 +8203,7 @@ std::wstring tooltip_text(const Hit& h) {
             const Tile& t = g_tiles[static_cast<size_t>(h.tile)];
             if (t.app < 0) return fmt(L"Installing {0}…", {job_label(t.job)});
             const App& a = g_apps[static_cast<size_t>(t.app)];
-            return run_active(a.name) ? a.label + L"  ·  " + L"Running" : a.label;
+            return tile_running(a.name) ? a.label + L"  ·  " + L"Running" : a.label;
         }
         default: return L"";
     }
@@ -7809,6 +8291,7 @@ void set_view(View view) {
     }
     rebuild_tiles();
     update_timer();
+    update_running_timer();
 }
 
 void set_hot(const Hit& h) {
@@ -7848,7 +8331,11 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             compute_layout();
             InvalidateRect(hwnd, nullptr, FALSE);
+            update_running_timer(wp != SIZE_MINIMIZED && IsWindowVisible(hwnd));
             return 0;
+        case WM_SHOWWINDOW:  // sent before the window is shown or hidden: IsWindowVisible has not changed yet
+            update_running_timer(wp != FALSE && !IsIconic(hwnd));
+            break;
         case WM_DPICHANGED: {
             g_dpi = HIWORD(wp);
             make_fonts();
@@ -7949,6 +8436,10 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kInfoBarTimer) info(L"", kInfo);
             if (wp == kUpdateTimer) auto_update_check();
+            if (wp == kRunningTimer) {
+                if (g_view == kAppView) details_sync(g_page.app);
+                else if (g_view == kLibraryView) refresh_own_running();
+            }
             if (wp == kSetupScanTimer) {
                 KillTimer(hwnd, kSetupScanTimer);
                 if (g_view == kGmsSetupView) {
@@ -8177,6 +8668,11 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 SendMessageW(g_search, WM_CHAR, wp, lp);
             }
             return 0;
+        case kInstallResolved: {
+            install_resolved(std::unique_ptr<ResolveJob>(reinterpret_cast<ResolveJob*>(lp)));
+            maybe_quit();
+            return 0;
+        }
         case kInstallStarted: {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             for (Job& j : g_jobs) {
@@ -8193,6 +8689,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case kInstalled: {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             const InstallEnd end = finish_install(*name);
+            g_queued_installs.erase(*name);
             const InstallEnd::Kind how = end.kind();
             refresh();
             for (Job& j : g_jobs) {
@@ -8242,6 +8739,8 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             const RunEnd end = finish_run(*name);
             update_timer();
+            if (g_running_timer) refresh_own_running();  // its mutex went with the process
+            details_sync(*name);
             InvalidateRect(hwnd, nullptr, FALSE);
             const std::wstring label = label_of(*name);
             if (*name == g_play.name &&
@@ -8407,7 +8906,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 stop_run(g_play.name);
             }
             // Work still under way (an install, a splash) keeps the process; the library only hides.
-            if (g_install_wnd || any_pending() || !g_splashes.empty() || g_log_wnd || any_runs()) {
+            if (has_work()) {
                 ShowWindow(hwnd, SW_HIDE);
                 maybe_quit();
                 return 0;
@@ -8502,8 +9001,8 @@ void write_registry() {
 }
 
 // Apps installed before the library recorded packages get theirs read now,
-// in the background, so the registry knows them too. (Only the name: the
-// version comes with the app's next install.)
+// in the background, so the registry knows them too, with the version the
+// APK says.
 DWORD WINAPI backfill_thread(void*) {
     bool changed = false;
     std::error_code ec;
@@ -8624,17 +9123,33 @@ int helper_main(int argc, wchar_t** argv) {
     fs::create_directories(pkg_out.parent_path(), ec);
     HANDLE probe = start_runtime(L"--apk \"" + apk + L"\" --package-to \"" + pkg_out.wstring() + L"\"",
                                  logs_dir() / L"install-helper.log");
-    std::string pkg;
+    std::vector<std::string> lines;
     if (probe && wait_exit(probe) == 0) {
         std::ifstream f(pkg_out, std::ios::binary);
-        std::getline(f, pkg);
+        for (std::string line; lines.size() < 3 && std::getline(f, line);) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            lines.push_back(line);
+        }
     }
     fs::remove(pkg_out, ec);
+    const std::string pkg = lines.empty() ? std::string() : lines[0];
     if (pkg.empty()) return helper_fail(6, "invalid-apk", "no package name in the app");
     helper_progress(0.05, "parsed");
 
     const App* existing = find_package(apps, pkg);
     const bool update = existing != nullptr;
+    // As Android's installer does, with no question: an older version never replaces a newer one. Exit 6 is
+    // what the installer reports as STATUS_FAILURE_INVALID, which is what INSTALL_FAILED_VERSION_DOWNGRADE is.
+    if (update) {
+        const winapk::launcher::AppVersion older = winapk::launcher::version_from_lines(lines, false);
+        const winapk::launcher::AppVersion installed =
+            winapk::launcher::version_from_lines(package_of(existing->name), true);
+        if (winapk::launcher::is_downgrade(older, installed)) {
+            return helper_fail(6, "downgrade",
+                               "the installed version " + winapk::launcher::describe_version(installed) +
+                                   " is newer than this app's " + winapk::launcher::describe_version(older));
+        }
+    }
     const std::wstring wpkg = utf8_to_wide(pkg);
     // The Play Store installs as a phone's system installer does, with no question: it holds INSTALL_PACKAGES
     // there, and the user already chose the app in it. Only the real one: the asking runtime runs the
@@ -8648,7 +9163,12 @@ int helper_main(int argc, wchar_t** argv) {
     if (!agreed) return helper_fail(3, "consent", "declined");
     helper_progress(0.1, "consented");
 
-    const std::wstring name = update ? existing->name : file_name_safe(wpkg);
+    const std::wstring name =
+        update ? existing->name
+               : winapk::launcher::choose_install_name(file_name_safe(wpkg), pkg,
+                                                       [](const std::wstring& n) { return name_holder(n, L"", ""); })
+                     .name;
+    if (name.empty()) return helper_fail(5, "install", "too many apps have the name of " + pkg);
     bool running = false;
     if (!install_into_library(apk, name, update ? existing->apk : fs::path(), &running)) {
         if (running) return helper_fail(5, "install", "the app is running; close it, then update it");
@@ -10077,35 +10597,87 @@ void show_library(int show) {
 }
 
 // When the library is not shown, the process lives only for what it is doing: an install window,
-// a splash, an app it started (to report how it ended), the log window.
+// a splash, an app it started (to report how it ended), the log window, a download (the store's, or
+// Win.apk's own update).
+bool has_work() {
+    return g_install_wnd || g_log_wnd || !g_splashes.empty() || any_runs() || installs_in_progress() ||
+           !g_store.downloads.empty() || g_update.downloading();
+}
+
 void maybe_quit() {
-    if (!g_main || IsWindowVisible(g_main)) return;
-    if (g_install_wnd || g_log_wnd || !g_splashes.empty() || any_runs() || any_pending()) return;
+    // An install window made over the library is owned by it, so destroying the library destroys that window
+    // again while its own WM_DESTROY is still running here: without the flag this recurses and the library's
+    // WM_DESTROY, which ends the message loop, never comes.
+    static bool quitting = false;
+    if (quitting || !g_main || IsWindowVisible(g_main) || has_work()) return;
+    quitting = true;
     DestroyWindow(g_main);
 }
+
+// Frees every GDI+ object held in a global while GDI+ still runs: after GdiplusShutdown their destructors fault,
+// as the static destructors at exit would. A new such global goes here.
+void release_gdiplus_objects() {
+    g_icons.clear();
+    g_brand.reset();
+    g_account_photo.reset();
+    g_store.icons.clear();
+    g_pending_looks.clear();
+    for (Job& j : g_jobs) j.icon.reset();
+    for (auto& s : g_splashes) s.second->icon.reset();
+    g_f = Fonts{};
+}
+
+// Shuts GDI+ down on every exit from wWinMain, after the globals are released.
+class GdiplusSession {
+public:
+    GdiplusSession() {
+        Gdiplus::GdiplusStartupInput in;
+        if (Gdiplus::GdiplusStartup(&token_, &in, nullptr) != Gdiplus::Ok) token_ = 0;
+    }
+    ~GdiplusSession() {
+        release_gdiplus_objects();
+        if (token_) Gdiplus::GdiplusShutdown(token_);
+    }
+    GdiplusSession(const GdiplusSession&) = delete;
+    GdiplusSession& operator=(const GdiplusSession&) = delete;
+
+private:
+    ULONG_PTR token_ = 0;
+};
+
+// Declared before GdiplusSession so that OLE is uninitialized last.
+class OleSession {
+public:
+    OleSession() { OleInitialize(nullptr); }
+    ~OleSession() { OleUninitialize(); }
+    OleSession(const OleSession&) = delete;
+    OleSession& operator=(const OleSession&) = delete;
+};
 
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     g_inst = inst;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    OleInitialize(nullptr);
+    const OleSession ole;
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 
+    // The uninstaller's cleanup: no window, and no hand-off to a running library.
+    if (argc >= 2 && wcscmp(argv[1], L"--uninstall-cleanup") == 0) {
+        uninstall_cleanup();
+        LocalFree(argv);
+        return 0;
+    }
+
     // The install helper, for apps that install apps.
     if (argc >= 2 && (wcscmp(argv[1], L"install") == 0 || wcscmp(argv[1], L"uninstall") == 0)) {
-        ULONG_PTR gdiplus = 0;  // its question is the launcher's dialog
-        Gdiplus::GdiplusStartupInput gsi;
-        Gdiplus::GdiplusStartup(&gdiplus, &gsi, nullptr);
+        const GdiplusSession gdiplus;  // its question is the launcher's dialog
         pick_theme();
         g_dpi = static_cast<float>(GetDpiForSystem());
         make_fonts();
         const int code = helper_main(argc, argv);
         LocalFree(argv);
-        g_f = Fonts{};
-        Gdiplus::GdiplusShutdown(gdiplus);
-        OleUninitialize();
         return code;
     }
 
@@ -10122,16 +10694,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             if (is_app_file(argv[i])) files.emplace_back(argv[i]);
         if (forward_to_running(files.empty(), files)) {
             LocalFree(argv);
-            OleUninitialize();
             return 0;
         }
     }
 
     INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&icc);
-    ULONG_PTR gdiplus = 0;
-    Gdiplus::GdiplusStartupInput gsi;
-    Gdiplus::GdiplusStartup(&gdiplus, &gsi, nullptr);
+    const GdiplusSession gdiplus;
     pick_theme();
 
     // The permission dialogs, for apps that ask for permissions.
@@ -10140,15 +10709,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         make_fonts();
         const int code = permission_main(argc, argv);
         LocalFree(argv);
-        g_f = Fonts{};
-        Gdiplus::GdiplusShutdown(gdiplus);
-        OleUninitialize();
         return code;
     }
 
     // Before anything reads the library: an update cut off the last time (a crash, the power) is undone.
     recover_interrupted_installs();
     if (run_apk.empty()) {
+        remove_partial_downloads();
         integrate_with_windows();
         refresh_app_shortcuts();
         write_registry();  // apps installed before the registry existed, or by an older launcher
@@ -10205,9 +10772,5 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
-    g_icons.clear();
-    g_f = Fonts{};
-    Gdiplus::GdiplusShutdown(gdiplus);
-    OleUninitialize();
     return 0;
 }

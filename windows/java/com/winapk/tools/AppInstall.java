@@ -50,8 +50,10 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -66,17 +68,21 @@ public final class AppInstall {
     static final String NAME_NONCE = "Qm4c4pk0Zx9AbC1dEfGh8Q==";
 
     public static void main(String[] args) {
-        // AppInstall --package <app> <out file>: only the package name, for the
-        // launcher's install helper, which must know which app an install
-        // replaces before it asks the user and installs it.
+        // AppInstall --package <app> <out file>: the package name, then the
+        // versionCode and the versionName (a line each, empty when the manifest
+        // has none), for the launcher's install helper, which must know which
+        // app an install replaces, and whether that is a downgrade, before it
+        // asks the user and installs it.
         if (args.length == 3 && args[0].equals("--package")) {
             try {
-                String pkg = packageOf(Paths.get(args[1]));
-                if (pkg == null) {
+                ManifestInfo info = manifestInfoOf(Paths.get(args[1]));
+                if (info == null || info.pkg == null) {
                     System.err.println("[install] no package name in " + args[1]);
                     System.exit(3);
                 }
-                Files.writeString(Paths.get(args[2]), pkg, StandardCharsets.UTF_8);
+                Files.writeString(Paths.get(args[2]), info.pkg + "\n"
+                        + (info.versionCode == null ? "" : info.versionCode) + "\n"
+                        + (info.versionName == null ? "" : info.versionName) + "\n", StandardCharsets.UTF_8);
                 System.exit(0);
             } catch (IOException e) {
                 System.err.println("[install] " + e);
@@ -248,14 +254,25 @@ public final class AppInstall {
 
     // ---- the package name, from the binary AndroidManifest.xml ------------------
 
-    /** The package of an APK or a bundle (whose base APK is unpacked to a
-     *  scratch folder next to it and removed again). */
-    static String packageOf(Path source) throws IOException {
-        if (source.getFileName().toString().toLowerCase().endsWith(".apk")) return packageName(source);
+    /** What the manifest says of the app: the package (null when it has none
+     *  or it is not a package name), the version code (null when the manifest
+     *  has none) and the version name (null when it has none, or it is not
+     *  text). */
+    static final class ManifestInfo {
+        String pkg;
+        Long versionCode;
+        String versionName;
+    }
+
+    /** The manifest of an APK or a bundle (whose base APK is unpacked to a
+     *  scratch folder next to it and removed again); null when a bundle holds
+     *  no APK. */
+    static ManifestInfo manifestInfoOf(Path source) throws IOException {
+        if (source.getFileName().toString().toLowerCase().endsWith(".apk")) return manifestInfo(source);
         Path scratch = Files.createTempDirectory(source.toAbsolutePath().getParent(), ".package-");
         try {
             List<Path> members = new ArrayList<>();
-            return unpackBundle(source, scratch, members) && !members.isEmpty() ? packageName(members.get(0)) : null;
+            return unpackBundle(source, scratch, members) && !members.isEmpty() ? manifestInfo(members.get(0)) : null;
         } finally {
             deleteTree(scratch);
         }
@@ -264,20 +281,63 @@ public final class AppInstall {
     /** The `package` attribute of the manifest's root element, or null when
      *  there is none or it is not a valid package name. */
     static String packageName(Path apk) throws IOException {
+        return manifestInfo(apk).pkg;
+    }
+
+    /** The package, version code (versionCodeMajor over versionCode, as
+     *  Android's PackageParser.composeLongVersionCode makes it) and version
+     *  name of an APK's manifest. Each is null when absent or malformed. */
+    static ManifestInfo manifestInfo(Path apk) throws IOException {
         byte[] axml;
+        ManifestInfo info = new ManifestInfo();
         try (ZipFile zip = new ZipFile(apk.toFile())) {
             ZipEntry m = zip.getEntry("AndroidManifest.xml");
-            if (m == null) return null;
+            if (m == null) return info;
             try (InputStream in = zip.getInputStream(m)) {
                 axml = in.readAllBytes();
             }
         }
-        String pkg = rootAttribute(axml, "package");
-        if (pkg != null && !pkg.equals("android") && !PACKAGE_NAME.matcher(pkg).matches()) {
-            System.err.println("[install] " + apk.getFileName() + ": the manifest's package is not a package name");
-            return null;
+        Map<String, Object> root;
+        try {
+            root = rootAttributes(axml);
+        } catch (RuntimeException e) {  // a truncated or garbled manifest: nothing usable
+            System.err.println("[install] " + apk.getFileName() + ": unreadable manifest: " + e);
+            return info;
         }
-        return pkg;
+        Object pkg = root.get("package");
+        if (pkg instanceof String) {
+            String p = (String) pkg;
+            if (!p.equals("android") && !PACKAGE_NAME.matcher(p).matches()) {
+                System.err.println("[install] " + apk.getFileName() + ": the manifest's package is not a package name");
+            } else {
+                info.pkg = p;
+            }
+        }
+        Object minor = root.get("android:versionCode"), major = root.get("android:versionCodeMajor");
+        if (minor instanceof Integer || major instanceof Integer) {
+            long code = (major instanceof Integer ? (long) (Integer) major : 0L) << 32
+                    | (minor instanceof Integer ? (Integer) minor & 0xFFFFFFFFL : 0L);
+            if (code >= 0) info.versionCode = code;
+        }
+        Object name = root.get("android:versionName");
+        if (name instanceof String) info.versionName = lineText((String) name, 64);
+        return info;
+    }
+
+    /** `s` as one line of at most `max` chars: control characters become
+     *  spaces, so that the text cannot add a line to the file it is written in. */
+    static String lineText(String s, int max) {
+        int end = Math.min(s.length(), max);
+        if (end > 0 && end < s.length() && Character.isHighSurrogate(s.charAt(end - 1))) end--;
+        StringBuilder b = new StringBuilder(end);
+        for (int i = 0; i < end; i++) {
+            char c = s.charAt(i);
+            boolean lone = Character.isHighSurrogate(c)
+                    ? i + 1 >= end || !Character.isLowSurrogate(s.charAt(i + 1))
+                    : Character.isLowSurrogate(c) && (i == 0 || !Character.isHighSurrogate(s.charAt(i - 1)));
+            b.append(Character.isISOControl(c) || lone ? ' ' : c);
+        }
+        return b.toString().trim();
     }
 
     // Android's own rule for an app's package (PackageParser.validateName with
@@ -288,8 +348,16 @@ public final class AppInstall {
     // for every caller.
     static final Pattern PACKAGE_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+");
 
-    /** A string attribute of the first element of a binary XML document. */
-    static String rootAttribute(byte[] axml, String attr) {
+    static final String ANDROID_NS = "http://schemas.android.com/apk/res/android";
+
+    /** The attributes of the first element of a binary XML document: a string
+     *  attribute as a String, a decimal or hexadecimal one as an Integer; any
+     *  other kind is left out. An attribute with no namespace is keyed by its
+     *  name, one in Android's namespace as "android:<name>", and any other is
+     *  skipped, as Android reads them. The first of a key wins. */
+    static Map<String, Object> rootAttributes(byte[] axml) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        Set<String> seen = new HashSet<>();
         ByteBuffer b = ByteBuffer.wrap(axml).order(ByteOrder.LITTLE_ENDIAN);
         List<String> strings = null;
         int pos = b.getShort(2) & 0xffff;  // the document header's size
@@ -297,7 +365,7 @@ public final class AppInstall {
             int type = b.getShort(pos) & 0xffff;
             int headerSize = b.getShort(pos + 2) & 0xffff;
             int size = b.getInt(pos + 4);
-            if (size <= 0) return null;
+            if (size <= 0) return out;
             if (type == 0x0001) {
                 strings = stringPool(b, pos);
             } else if (type == 0x0102 && strings != null) {
@@ -307,17 +375,27 @@ public final class AppInstall {
                 for (int i = 0; i < count; i++) {
                     int a = pos + headerSize + attrStart + i * attrSize;
                     int name = b.getInt(a + 4);
-                    if (name < 0 || name >= strings.size() || !attr.equals(strings.get(name))) continue;
+                    if (name < 0 || name >= strings.size()) continue;
+                    int ns = b.getInt(a);
+                    String key;
+                    if (ns == -1) key = strings.get(name);
+                    else if (ns >= 0 && ns < strings.size() && strings.get(ns).equals(ANDROID_NS))
+                        key = "android:" + strings.get(name);
+                    else continue;
+                    if (!seen.add(key)) continue;
                     int raw = b.getInt(a + 8);
-                    if (raw >= 0 && raw < strings.size()) return strings.get(raw);
                     int dataType = b.get(a + 15) & 0xff, data = b.getInt(a + 16);
-                    return dataType == 0x03 && data >= 0 && data < strings.size() ? strings.get(data) : null;
+                    Object value = null;
+                    if (raw >= 0 && raw < strings.size()) value = strings.get(raw);
+                    else if (dataType == 0x03 && data >= 0 && data < strings.size()) value = strings.get(data);
+                    else if (dataType == 0x10 || dataType == 0x11) value = data;
+                    if (value != null) out.put(key, value);
                 }
-                return null;
+                return out;
             }
             pos += size;
         }
-        return null;
+        return out;
     }
 
     static List<String> stringPool(ByteBuffer b, int pos) {

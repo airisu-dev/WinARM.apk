@@ -13,7 +13,7 @@
 //   5. Call com.macapk.loader.Boot.run.
 //
 //   winapk-runtime --apk <file.apk> [--data <dir>] [--jdk <dir>] [--lib <dir>] [--install-only]
-//   winapk-runtime --apk <app> --package-to <file>   (the launcher's install helper: the package name)
+//   winapk-runtime --apk <app> --package-to <file>   (the launcher: package, versionCode, versionName)
 //   winapk-runtime --verify-apk <app>   (the launcher's Google services setup: package and signer, below)
 //   winapk-runtime --java-main --jdk <dir> --cp <jar> <class> [args...]   (internal: run_java)
 //   winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --system   (the system broker, below)
@@ -94,7 +94,7 @@ struct Options {
     fs::path apk, data, jdk, lib;
     bool install_only = false;
     bool default_data = false;  // no --data: the user's own library, not a test's scratch folder
-    fs::path package_to;  // --package-to: write the app's package name there and stop
+    fs::path package_to;  // --package-to: write package, versionCode and versionName (a line each), then stop
     bool gms = false;     // --gms <subcommand> [args]: com.macapk.gms.GmsCli, no app
     std::vector<std::wstring> gms_args;
     bool system = false;  // --system: the system broker, no app

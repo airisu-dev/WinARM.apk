@@ -39,6 +39,15 @@ struct CheckResult {
     bool found = false;    // and it has a release
 };
 
+// What a finished download does. The installer runs only with the library on screen: a download that ends
+// while the library is hidden (closed during it) keeps its checked file for the next "Update" and shows
+// nothing, since running the installer closes the library and replaces the program unasked.
+enum class InstallerDownloaded { kRun, kReport, kKeep };
+inline InstallerDownloaded installer_downloaded(bool library_shown, bool ready) {
+    if (!library_shown) return InstallerDownloaded::kKeep;
+    return ready ? InstallerDownloaded::kRun : InstallerDownloaded::kReport;
+}
+
 // `Release` is the launcher's: all that is asked of it here is `.version`.
 template <class Release>
 class UpdateTracker {

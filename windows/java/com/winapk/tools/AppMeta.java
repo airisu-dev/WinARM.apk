@@ -10,7 +10,9 @@
 // <app dir>/label.txt (UTF-8); the package name stands in when there is none.
 // <app dir>/package.txt names the package, its versionCode and versionName,
 // one per line: the launcher's installed-apps registry, which PackageManager
-// answers stores from (F-Droid's Install -> Open), is built from it. A fourth
+// answers stores from (F-Droid's Install -> Open), is built from it. The
+// versionCode is the 64-bit one (versionCodeMajor over versionCode), so that the
+// launcher can tell an older file from the installed version. A fourth
 // line is the launched activity's android:screenOrientation (the
 // ActivityInfo.SCREEN_ORIENTATION_* number, -1 when it declares none), so the
 // library knows before starting the app whether it insists on portrait or
@@ -50,7 +52,8 @@ public final class AppMeta {
             pkg = mf.packageName;
             String version = (mf.versionNameRaw != null ? mf.versionNameRaw : "").replace('\n', ' ');
             save(new File(appDir, "package.txt"),
-                    pkg + "\n" + mf.versionCode + "\n" + version + "\n" + launchOrientation(mf) + "\n");
+                    pkg + "\n" + longVersionCode(apkPath, mf.versionCode) + "\n" + version + "\n"
+                            + launchOrientation(mf) + "\n");
             label = resolve(mf.applicationLabel, apkPath, pkg);
         } catch (Throwable t) {
             System.err.println("[win.apk] reading the app's name failed: " + t);
@@ -62,6 +65,17 @@ public final class AppMeta {
         } catch (Exception e) {
             System.err.println("[win.apk] writing label.txt failed: " + e);
         }
+    }
+
+    /** The manifest's versionCode with its versionCodeMajor, else the one Manifest read. */
+    private static long longVersionCode(String apkPath, int minor) {
+        try {
+            Long code = AppInstall.manifestInfo(new File(apkPath).toPath()).versionCode;
+            if (code != null) return code;
+        } catch (Exception e) {
+            System.err.println("[win.apk] reading the version code failed: " + e);
+        }
+        return minor;
     }
 
     // Always a file of its own. A run of the app from before Boot.CODE_DIR_OURS named these two
