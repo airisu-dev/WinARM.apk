@@ -106,6 +106,7 @@ java/com/macapk/loader/SpecialAccessStore.java	f222bde81758721329198381db5e383a2
 java/com/macapk/loader/SystemClient.java	ab254f10c28ff6179fb6f17558e9dd726b40753f
 java/com/macapk/loader/SystemServer.java	d2c9244944e8df515e0559e2097ae14b54cfe962
 java/com/macapk/loader/TouchDispatcher.java	d97dabbdba75f8da2cf481ffb2b405b8621eefb8
+java/com/macapk/loader/ViewCanvasDriver.java	812f46db2571ed84c484f9c416f8aa24ec1d9287
 java/com/macapk/loader/ViewDump.java	new
 java/com/macapk/loader/WinProcesses.java	new
 java/com/macapk/loader/WindowOverlayStack.java	0a2d13cf6d0a33d6ee6a069c6aa4e87a57f46e0d
