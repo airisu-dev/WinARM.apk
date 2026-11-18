@@ -10600,16 +10600,61 @@ bool has_work() {
 }
 
 void maybe_quit() {
-    if (!g_main || IsWindowVisible(g_main) || has_work()) return;
+    // An install window made over the library is owned by it, so destroying the library destroys that window
+    // again while its own WM_DESTROY is still running here: without the flag this recurses and the library's
+    // WM_DESTROY, which ends the message loop, never comes.
+    static bool quitting = false;
+    if (quitting || !g_main || IsWindowVisible(g_main) || has_work()) return;
+    quitting = true;
     DestroyWindow(g_main);
 }
+
+// Frees every GDI+ object held in a global while GDI+ still runs: after GdiplusShutdown their destructors fault,
+// as the static destructors at exit would. A new such global goes here.
+void release_gdiplus_objects() {
+    g_icons.clear();
+    g_brand.reset();
+    g_account_photo.reset();
+    g_store.icons.clear();
+    g_pending_looks.clear();
+    for (Job& j : g_jobs) j.icon.reset();
+    for (auto& s : g_splashes) s.second->icon.reset();
+    g_f = Fonts{};
+}
+
+// Shuts GDI+ down on every exit from wWinMain, after the globals are released.
+class GdiplusSession {
+public:
+    GdiplusSession() {
+        Gdiplus::GdiplusStartupInput in;
+        if (Gdiplus::GdiplusStartup(&token_, &in, nullptr) != Gdiplus::Ok) token_ = 0;
+    }
+    ~GdiplusSession() {
+        release_gdiplus_objects();
+        if (token_) Gdiplus::GdiplusShutdown(token_);
+    }
+    GdiplusSession(const GdiplusSession&) = delete;
+    GdiplusSession& operator=(const GdiplusSession&) = delete;
+
+private:
+    ULONG_PTR token_ = 0;
+};
+
+// Declared before GdiplusSession so that OLE is uninitialized last.
+class OleSession {
+public:
+    OleSession() { OleInitialize(nullptr); }
+    ~OleSession() { OleUninitialize(); }
+    OleSession(const OleSession&) = delete;
+    OleSession& operator=(const OleSession&) = delete;
+};
 
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     g_inst = inst;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-    OleInitialize(nullptr);
+    const OleSession ole;
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 
@@ -10617,23 +10662,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (argc >= 2 && wcscmp(argv[1], L"--uninstall-cleanup") == 0) {
         uninstall_cleanup();
         LocalFree(argv);
-        OleUninitialize();
         return 0;
     }
 
     // The install helper, for apps that install apps.
     if (argc >= 2 && (wcscmp(argv[1], L"install") == 0 || wcscmp(argv[1], L"uninstall") == 0)) {
-        ULONG_PTR gdiplus = 0;  // its question is the launcher's dialog
-        Gdiplus::GdiplusStartupInput gsi;
-        Gdiplus::GdiplusStartup(&gdiplus, &gsi, nullptr);
+        const GdiplusSession gdiplus;  // its question is the launcher's dialog
         pick_theme();
         g_dpi = static_cast<float>(GetDpiForSystem());
         make_fonts();
         const int code = helper_main(argc, argv);
         LocalFree(argv);
-        g_f = Fonts{};
-        Gdiplus::GdiplusShutdown(gdiplus);
-        OleUninitialize();
         return code;
     }
 
@@ -10650,16 +10689,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             if (is_app_file(argv[i])) files.emplace_back(argv[i]);
         if (forward_to_running(files.empty(), files)) {
             LocalFree(argv);
-            OleUninitialize();
             return 0;
         }
     }
 
     INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES};
     InitCommonControlsEx(&icc);
-    ULONG_PTR gdiplus = 0;
-    Gdiplus::GdiplusStartupInput gsi;
-    Gdiplus::GdiplusStartup(&gdiplus, &gsi, nullptr);
+    const GdiplusSession gdiplus;
     pick_theme();
 
     // The permission dialogs, for apps that ask for permissions.
@@ -10668,9 +10704,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         make_fonts();
         const int code = permission_main(argc, argv);
         LocalFree(argv);
-        g_f = Fonts{};
-        Gdiplus::GdiplusShutdown(gdiplus);
-        OleUninitialize();
         return code;
     }
 
@@ -10734,9 +10767,5 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         TranslateMessage(&m);
         DispatchMessageW(&m);
     }
-    g_icons.clear();
-    g_f = Fonts{};
-    Gdiplus::GdiplusShutdown(gdiplus);
-    OleUninitialize();
     return 0;
 }
