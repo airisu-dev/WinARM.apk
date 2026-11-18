@@ -32,7 +32,7 @@ upstream so its releases can be merged.
 | `src/arm64/` | `arm64_native.cpp`: the per-thread `TPIDR_EL0` block, the TLSDESC resolver, `svc #0` answered by the shim. `arm64_abi.cpp`: the shim calls whose structs, flags or system call numbers arm64 lays out differently |
 | `include/winapk/arm64_x18.h` | The x18 scan: a library that uses x18 as scratch is refused (Windows keeps the TEB there) |
 | `host/` | `winapk-runtime.exe` (`runtime_main.cpp`), the app window (`win32_window.cpp`), the host natives (`native_*.cpp`, one file per Java class; `host_natives.cpp` binds them), the GL layer (`gl/`), app library loading (`guest_libs.cpp`, `guest_stub.cpp`, `translator_main.cpp`), shared storage (`user_folders.cpp`), java.io opens with `FILE_SHARE_DELETE` (`java_io_open.cpp`), class-data sharing (`cds.cpp`, `cds_util.cpp`) |
-| `launcher/` | `Win.apk.exe`: the app library, the install helper and the permission dialogs (`launcher_main.cpp`), and its state machines, each a header a unit test drives (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `theme_choice.h`) |
+| `launcher/` | `Win.apk.exe`: the app library, the install helper and the permission dialogs (`launcher_main.cpp`), and its state machines, each a header a unit test drives (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `prompt_ids.h`, `theme_choice.h`) |
 | `java/` | Windows-only Java: `com.winapk.tools` (`winapk-tools.jar`), `java_base_patch/` (an overlay for `java.base`), `winapk-framework.classlist` (the framework archive's classes, `host/cds.h`) |
 | `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which libraries an ARM64 PC refuses, and why), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py`, `gen_icon.py` |
 | `scripts/` | `build_java.sh`, `build_framework_res.sh`, `fetch_angle.sh`, `fetch_webview2.sh`, `stage_runtime.sh`, `bake_jre.sh`, `merge_classlists.py`, `arch.sh` |
@@ -191,7 +191,7 @@ Every test is a program built by CMake; `win-ci.yml` runs each on
 | `winapk-video-test <test/video>` | Media Foundation video without a JVM: converter, decoder, source and player; the demuxer, the H.264 and AAC encoders and the MP4 writer |
 | `winapk-user-folders-test <dir>` | The shared-storage junction rules |
 | `winapk-window-test` | Window geometry and input decisions without a window (`host/window_fit.h`, `host/pointer_input.h`) |
-| `winapk-launcher-state-test` | The launcher's state machines (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `theme_choice.h`) step by step |
+| `winapk-launcher-state-test` | The launcher's state machines (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `prompt_ids.h`, `theme_choice.h`) step by step |
 | `winapk-bluetooth-test` | The Bluetooth host's pure parts: SHA-1, WinRT parameterized IIDs, UUIDs, addresses, advertisement bytes |
 | `winapk-jvm-run <jni_guest.so> <classes>` | A real HotSpot loads a guest library through the linker: `JNI_OnLoad` and `RegisterNatives`, binding by name, calls back through the variadic bridge; again on the staged jars for libjnigraphics |
 | `winapk-gl-test` | ANGLE makes a context and the read-back frame has the right colors |

@@ -99,6 +99,7 @@
 #include "install_versions.h"
 #include "installs.h"
 #include "page_sync.h"
+#include "prompt_ids.h"
 #include "shortcut_rules.h"
 #include "theme_choice.h"
 #include "updates.h"
@@ -3629,11 +3630,12 @@ void update_timer() {
 // when it is about one app; then the question, at most a sentence saying what it means, switches or a
 // check box when there is something to pick, and the buttons: the accent one first, as Windows orders
 // them, stacked full width for an app's question as Android's are, else right-aligned in a footer.
-// Esc and the caption's close are no answer (0).
+// Esc and the caption's close are no answer (0). Enter presses the focused button, else the default one; Space
+// acts on the focused control, so it toggles a check box only while that has the focus (prompt_ids.h).
 
 constexpr UINT kAskTimeoutMs = 300 * 1000;  // an app's question: no answer in five minutes changes nothing
 
-constexpr int kPromptLink = 0x7000;  // the link's target id: past any switch's, and no button uses it
+constexpr int kPromptLink = winapk::launcher::kPromptLinkId;
 
 struct Prompt {
     std::wstring app, question, note;
@@ -3653,7 +3655,7 @@ struct Prompt {
     int default_id = 0;    // Enter
     int pressed = 0;       // the answer; 0: closed or timed out
     HWND window = nullptr, near_window = nullptr, owner = nullptr;
-    Targets targets;       // ids: a button's own, or 1 + index for a switch
+    Targets targets;       // ids: a button's own, prompt_switch_id(i) for a switch, or kPromptLink
     int hot = 0, focus = 0;
     bool tracking = false;
 };
@@ -3694,7 +3696,7 @@ float layout_prompt(Graphics& g, Prompt& p, float W, bool draw) {
     if (checks) {
         y += px(10);
         for (size_t i = 0; i < p.switches.size(); ++i) {
-            const int id = 1 + static_cast<int>(i);
+            const int id = winapk::launcher::prompt_switch_id(i);
             const float th = (std::max)(px(20), text_height(g, p.switches[i].title, g_f.body.get(), cw - px(30)) + px(2));
             const RectF row(m, y, cw, th + px(8)), box(m, y + px(4), px(20), px(20));
             p.targets.push_back({row, id});
@@ -3713,7 +3715,7 @@ float layout_prompt(Graphics& g, Prompt& p, float W, bool draw) {
         if (draw) fill_round(g, card, px(kRadiusCard), g_t.card);
         for (size_t i = 0; i < p.switches.size(); ++i) {
             const RectF r(m, y + i * rh, cw, rh);
-            const int id = 1 + static_cast<int>(i);
+            const int id = winapk::launcher::prompt_switch_id(i);
             p.targets.push_back({r, id});
             if (!draw) continue;
             if (p.hot == id) {
@@ -3781,18 +3783,21 @@ void close_prompt(Prompt& p) {
 }
 
 void prompt_answer(Prompt& p, int id) {
-    if (id <= 0) return;
-    if (id == kPromptLink) {
-        if (p.on_link) p.on_link();
-        return;
+    const winapk::launcher::PromptStep s = winapk::launcher::prompt_step(id, p.switches.size());
+    switch (s.act) {
+        case winapk::launcher::PromptAct::kNone: return;
+        case winapk::launcher::PromptAct::kLink:
+            if (p.on_link) p.on_link();
+            return;
+        case winapk::launcher::PromptAct::kToggle:
+            p.switches[s.index].on = !p.switches[s.index].on;
+            InvalidateRect(p.window, nullptr, FALSE);
+            return;
+        case winapk::launcher::PromptAct::kPress:
+            p.pressed = s.id;
+            close_prompt(p);
+            return;
     }
-    if (id <= static_cast<int>(p.switches.size())) {
-        p.switches[static_cast<size_t>(id - 1)].on = !p.switches[static_cast<size_t>(id - 1)].on;
-        InvalidateRect(p.window, nullptr, FALSE);
-        return;
-    }
-    p.pressed = id;
-    close_prompt(p);
 }
 
 LRESULT CALLBACK prompt_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -3824,7 +3829,7 @@ LRESULT CALLBACK prompt_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == VK_ESCAPE) {
                 close_prompt(*p);
             } else if (wp == VK_RETURN) {
-                prompt_answer(*p, p->focus ? p->focus : p->default_id);
+                prompt_answer(*p, winapk::launcher::prompt_enter_target(p->focus, p->default_id));
             } else if (wp == VK_SPACE && p->focus) {
                 prompt_answer(*p, p->focus);
             } else if (wp == VK_TAB || wp == VK_UP || wp == VK_DOWN || wp == VK_LEFT || wp == VK_RIGHT) {

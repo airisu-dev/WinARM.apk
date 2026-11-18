@@ -28,6 +28,7 @@
 #include "../launcher/install_versions.h"
 #include "../launcher/installs.h"
 #include "../launcher/page_sync.h"
+#include "../launcher/prompt_ids.h"
 #include "../launcher/shortcut_rules.h"
 #include "../launcher/theme_choice.h"
 #include "../launcher/updates.h"
@@ -759,6 +760,30 @@ void test_theme_choice() {
     check("Theme 0x80000001 is the default, not light", theme_choice(0x80000001u) == ThemeChoice::kFollowWindows);
 }
 
+void test_prompt_ids() {
+    std::printf("prompt ids\n");
+    using namespace winapk::launcher;
+    // Remove: IDOK + IDCANCEL buttons, one check box.
+    check("a click on IDOK presses it, not the first switch", prompt_step(1, 1).act == PromptAct::kPress &&
+                                                               prompt_step(1, 1).id == 1);
+    check("a click on IDCANCEL presses it", prompt_step(2, 1).act == PromptAct::kPress);
+    check("the first switch has an id no button has", prompt_switch_id(0) != 1 && prompt_switch_id(0) != 2);
+    const PromptStep t = prompt_step(prompt_switch_id(0), 1);
+    check("a click on the check box toggles switch 0", t.act == PromptAct::kToggle && t.index == 0);
+    check("a switch past the last is nothing", prompt_step(prompt_switch_id(1), 1).act == PromptAct::kNone);
+    check("switch 2 of 3 toggles index 2", prompt_step(prompt_switch_id(2), 3).index == 2);
+    check("an app question's id 100 presses", prompt_step(100, 2).act == PromptAct::kPress);
+    check("the link is a link", prompt_step(kPromptLinkId, 2).act == PromptAct::kLink);
+    check("no target is nothing", prompt_step(0, 1).act == PromptAct::kNone);
+    check("a negative id is nothing", prompt_step(-1, 1).act == PromptAct::kNone);
+    check("Enter with no focus is the default", prompt_enter_target(0, 2) == 2);
+    check("Enter on a focused button is that button", prompt_enter_target(1, 2) == 1);
+    check("Enter on the check box is the default button", prompt_enter_target(prompt_switch_id(0), 2) == 2);
+    check("Enter on the link is the link", prompt_enter_target(kPromptLinkId, 2) == kPromptLinkId);
+    check("Enter on the check box with no default does nothing",
+          prompt_step(prompt_enter_target(prompt_switch_id(0), 0), 1).act == PromptAct::kNone);
+}
+
 }  // namespace
 
 int main() {
@@ -771,6 +796,7 @@ int main() {
     test_clear_outcome();
     test_page_sync();
     test_theme_choice();
+    test_prompt_ids();
     std::printf("%d failed\n", g_failures);
     return g_failures ? 1 : 0;
 }
