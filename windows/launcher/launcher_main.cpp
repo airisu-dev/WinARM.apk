@@ -100,6 +100,7 @@
 #include "installs.h"
 #include "page_sync.h"
 #include "shortcut_rules.h"
+#include "theme_choice.h"
 #include "updates.h"
 #include "../host/window_fit.h"
 #include "../include/winapk/arch.h"
@@ -2301,8 +2302,9 @@ bool windows_uses_dark() {
 }
 
 void pick_theme() {
-    const DWORD pref = setting(L"Theme", 0);  // 0 as Windows, 1 light, 2 dark
-    const bool dark = pref == 2 || (pref == 0 && windows_uses_dark());
+    using winapk::launcher::ThemeChoice;
+    const ThemeChoice pref = winapk::launcher::theme_choice(setting(L"Theme", 0));
+    const bool dark = pref == ThemeChoice::kDark || (pref == ThemeChoice::kFollowWindows && windows_uses_dark());
     // Windows 11's own neutrals; the accent is the blue of the program's icon,
     // on dark backgrounds the lighter tint Windows uses there, with dark text.
     g_t = dark ? Theme{true,         hex(0x202020), hex(0x272727), hex(0x2D2D2D), hex(0x383838), hex(0x3D3D3D),
@@ -6421,7 +6423,7 @@ std::vector<Section> settings_sections() {
     theme.kind = Row::kChoice;
     theme.title = L"Theme";
     theme.choices = {L"Follow Windows", L"Light", L"Dark"};  // the setting's 0, 1, 2
-    theme.choice = static_cast<int>((std::min)(setting(L"Theme", 0), 2ul));
+    theme.choice = static_cast<int>(winapk::launcher::theme_choice(setting(L"Theme", 0)));
     theme.act = [](int i) {
         set_setting(L"Theme", static_cast<DWORD>(i));
         apply_theme();

@@ -15,6 +15,7 @@
 // generated name already taken.
 // The version a file or an installed app is: read strictly, 64-bit, and when installing the file is a downgrade.
 // A page built again on its own: when App details is due, and the hovered or Tab-focused control stays on its row.
+// The stored Theme value: 0, 1, 2, and anything else as the default.
 
 #include <cstdio>
 #include <map>
@@ -28,6 +29,7 @@
 #include "../launcher/installs.h"
 #include "../launcher/page_sync.h"
 #include "../launcher/shortcut_rules.h"
+#include "../launcher/theme_choice.h"
 #include "../launcher/updates.h"
 
 namespace {
@@ -744,6 +746,19 @@ void test_page_sync() {
     check("still none: unchanged", !replace_if_changed(own, {}));
 }
 
+void test_theme_choice() {
+    std::printf("theme choice\n");
+    using winapk::launcher::theme_choice;
+    using winapk::launcher::ThemeChoice;
+    check("Theme 0 follows Windows", theme_choice(0) == ThemeChoice::kFollowWindows);
+    check("Theme 1 is light", theme_choice(1) == ThemeChoice::kLight);
+    check("Theme 2 is dark", theme_choice(2) == ThemeChoice::kDark);
+    check("Theme 3 is the default, not dark", theme_choice(3) == ThemeChoice::kFollowWindows);
+    check("Theme 7 is the default", theme_choice(7) == ThemeChoice::kFollowWindows);
+    check("Theme 0xFFFFFFFF is the default", theme_choice(0xFFFFFFFFu) == ThemeChoice::kFollowWindows);
+    check("Theme 0x80000001 is the default, not light", theme_choice(0x80000001u) == ThemeChoice::kFollowWindows);
+}
+
 }  // namespace
 
 int main() {
@@ -755,6 +770,7 @@ int main() {
     test_shortcut_rules();
     test_clear_outcome();
     test_page_sync();
+    test_theme_choice();
     std::printf("%d failed\n", g_failures);
     return g_failures ? 1 : 0;
 }
