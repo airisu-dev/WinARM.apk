@@ -24,80 +24,70 @@ public final class HostTrust {
      * path building failed". The Windows store alone is not enough either: it
      * fetches public roots on demand, so one it never needed may be missing.
      *
-     * The merged set is a JKS file made the JVM's default trust store before
-     * anything initialises TLS: apps (OkHttp, Volley, Conscrypt-style code) and
-     * the GMS clients build their trust managers from
-     * TrustManagerFactory.init((KeyStore) null), which reads exactly that
-     * default when it first needs it. An explicit javax.net.ssl.trustStore is
-     * left alone, which also makes a second call a no-op.
+     * The merged set lives in this process's memory only, never in a file
+     * another process could replace. A security provider ahead of the JDK's
+     * reaches it by two doors, because the JDK's own default context never
+     * calls init(null): its trust managers come from the first "PKIX" factory,
+     * and when that is not SunJSSE's it is initialised with the JDK's cacerts
+     * KeyStore, an explicit store that must stay untouched (an app's own store
+     * looks the same).
+     * <ul>
+     * <li>The "PKIX" TrustManagerFactory answers init((KeyStore) null) -- what
+     * apps (OkHttp, Volley, Conscrypt-style code) and the GMS clients use for
+     * "the default trust store" -- with the merged set; an init with an
+     * explicit KeyStore or parameters goes to the JDK's factory unchanged.</li>
+     * <li>The "Default" SSLContext, which SSLContext.getDefault and so
+     * HttpsURLConnection, SSLSocketFactory.getDefault and an HttpClient with no
+     * context use, is replaced by one over the same merged set
+     * ({@link DefaultContext}).</li>
+     * </ul>
+     * An explicit javax.net.ssl.trustStore is left alone, which also makes a
+     * second call a no-op.
      *
      * Building the set costs 0.6-1.3 s (the JDK's TLS classes, cacerts, the
-     * Windows store), on the main thread before the app's first frame. So it is
-     * kept in one file, %TEMP%\winapk-trust.jks, shared by every app: a start
-     * that finds it uses it at once. One more than a day old is rebuilt in the
-     * background once the app is up, for the next start, so a root added to
-     * Windows (a filter's, a company's) reaches the apps within a day; only the
-     * first start ever builds it in line. JKS, not PKCS12: these are public certificates, and PKCS12 encrypts
-     * every entry, which alone took 220-350 ms. (It also replaces the temporary
-     * file each start wrote: deleteOnExit never ran, since the process ends with
-     * TerminateProcess, so %TEMP% kept 0.7 MB per app start.)
+     * Windows store), so install() only registers the provider and starts the
+     * build on a background thread; a connection that needs the set before it
+     * is done waits for it, the default context's included.
      */
     public static synchronized void install() {
         if (!System.getProperty("os.name", "").startsWith("Windows")) return;
         if (System.getProperty("javax.net.ssl.trustStore") != null) return;
-        final java.io.File store = new java.io.File(System.getProperty("java.io.tmpdir"), "winapk-trust.jks");
-        if (store.isFile() && store.length() > 0) {
-            use(store);
-            final long age = System.currentTimeMillis() - store.lastModified();
-            if (age >= 0 && age < MAX_AGE_MS) {
-                log(false, "TLS trust anchors: the JDK's and Windows' from " + store);
-                return;
+        if (java.security.Security.getProvider(Provider.NAME) != null) return;
+        java.security.Security.insertProviderAt(new Provider(), 1);
+        Thread build = new Thread(() -> {
+            try {
+                merged();
+            } catch (Throwable ignored) {
+                // merged() has logged it; a connection that needs the set reports its own failure.
             }
-            Thread refresh = new Thread(() -> {
-                try {
-                    Thread.sleep(REFRESH_DELAY_MS);
-                    build(store);
-                } catch (Throwable t) {
-                    log(true, "TLS trust anchors: refresh failed (" + t + ")");
-                }
-            }, "winapk-trust-refresh");
-            refresh.setDaemon(true);
-            refresh.setPriority(Thread.MIN_PRIORITY);
-            refresh.start();
-            log(false, "TLS trust anchors: the JDK's and Windows' from " + store + " (refreshed in the background)");
-            return;
-        }
+        }, "winapk-trust-build");
+        build.setDaemon(true);
+        build.setPriority(Thread.MIN_PRIORITY);
+        build.start();
+    }
+
+    /** The JDK's CAs plus the roots Windows trusts; null if building failed (the JDK's alone are used then). */
+    private static java.security.KeyStore mergedStore;
+    private static boolean mergedFailed;
+
+    private static synchronized java.security.KeyStore merged() throws Exception {
+        if (mergedStore != null || mergedFailed) return mergedStore;
         try {
-            build(store);
-            use(store);
+            mergedStore = build();
         } catch (Throwable t) {
+            mergedFailed = true;
             log(true, "TLS trust anchors: kept the JDK's (" + t + ")");
         }
+        return mergedStore;
     }
 
-    /** How long a built set is used as it is. */
-    private static final long MAX_AGE_MS = 24L * 60 * 60 * 1000;
-
-    /** After the app's first frame, as a rule; the next start reads the result. */
-    private static final long REFRESH_DELAY_MS = 20_000;
-
-    private static void use(java.io.File store) {
-        System.setProperty("javax.net.ssl.trustStore", store.getAbsolutePath());
-        System.setProperty("javax.net.ssl.trustStoreType", "JKS");
-        System.setProperty("javax.net.ssl.trustStorePassword", PASSWORD);
-    }
-
-    private static final String PASSWORD = "winapk";
-
-    /** Writes the JDK's CAs plus the roots Windows trusts to `store`, through a
-     *  file of its own that replaces it in one step, so another app starting
-     *  at the same moment reads either the old set or the new one. */
-    private static void build(java.io.File store) throws Exception {
+    private static java.security.KeyStore build() throws Exception {
         java.security.KeyStore merged = java.security.KeyStore.getInstance("JKS");
         merged.load(null, null);
         int n = 0;
+        // SunJSSE by name: the provider registered here must not answer for itself.
         javax.net.ssl.TrustManagerFactory jdk = javax.net.ssl.TrustManagerFactory.getInstance(
-            javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+            Provider.ALGORITHM, "SunJSSE");
         jdk.init((java.security.KeyStore) null);
         for (javax.net.ssl.TrustManager tm : jdk.getTrustManagers()) {
             if (!(tm instanceof javax.net.ssl.X509TrustManager)) continue;
@@ -113,18 +103,170 @@ public final class HostTrust {
             if (c == null || merged.getCertificateAlias(c) != null) continue;
             merged.setCertificateEntry("windows-" + (fromWindows++), c);
         }
-        java.io.File part = java.io.File.createTempFile("winapk-trust-", ".part", store.getParentFile());
-        try {
-            try (java.io.FileOutputStream out = new java.io.FileOutputStream(part)) {
-                merged.store(out, PASSWORD.toCharArray());
-            }
-            java.nio.file.Files.move(part.toPath(), store.toPath(),
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-        } finally {
-            part.delete();
+        log(false, "TLS trust anchors: " + n + " from the JDK + " + fromWindows + " more that Windows trusts");
+        return merged;
+    }
+
+    /** Puts {@link Factory} and {@link DefaultContext} ahead of the JDK's "PKIX" factory and "Default" context. */
+    public static final class Provider extends java.security.Provider {
+        static final String NAME = "WinApkTrust";
+        static final String ALGORITHM = "PKIX";
+        private static final long serialVersionUID = 1L;
+
+        public Provider() {
+            super(NAME, "1.0", "TLS trust anchors: the JDK's plus the roots Windows trusts");
+            put("TrustManagerFactory." + ALGORITHM, Factory.class.getName());
+            put("SSLContext.Default", DefaultContext.class.getName());
         }
-        log(false, "TLS trust anchors: " + n + " from the JDK + " + fromWindows
-            + " more that Windows trusts, written to " + store);
+    }
+
+    /** Hands out the JDK's trust managers, over the merged set when no trust store is named. */
+    public static final class Factory extends javax.net.ssl.TrustManagerFactorySpi {
+        private javax.net.ssl.TrustManagerFactory delegate;
+
+        private static javax.net.ssl.TrustManagerFactory jdk() throws java.security.GeneralSecurityException {
+            return javax.net.ssl.TrustManagerFactory.getInstance(Provider.ALGORITHM, "SunJSSE");
+        }
+
+        @Override
+        protected void engineInit(java.security.KeyStore ks) throws java.security.KeyStoreException {
+            try {
+                javax.net.ssl.TrustManagerFactory f = jdk();
+                java.security.KeyStore set = ks;
+                if (set == null) {
+                    try {
+                        set = merged();
+                    } catch (Exception e) {
+                        set = null;
+                    }
+                }
+                f.init(set);
+                delegate = f;
+            } catch (java.security.GeneralSecurityException e) {
+                throw new java.security.KeyStoreException(e);
+            }
+        }
+
+        @Override
+        protected void engineInit(javax.net.ssl.ManagerFactoryParameters spec)
+                throws java.security.InvalidAlgorithmParameterException {
+            try {
+                javax.net.ssl.TrustManagerFactory f = jdk();
+                f.init(spec);
+                delegate = f;
+            } catch (java.security.GeneralSecurityException e) {
+                if (e instanceof java.security.InvalidAlgorithmParameterException) {
+                    throw (java.security.InvalidAlgorithmParameterException) e;
+                }
+                throw new java.security.InvalidAlgorithmParameterException(e);
+            }
+        }
+
+        @Override
+        protected javax.net.ssl.TrustManager[] engineGetTrustManagers() {
+            if (delegate == null) throw new IllegalStateException("TrustManagerFactoryImpl is not initialized");
+            return delegate.getTrustManagers();
+        }
+    }
+
+    /**
+     * What SSLContext.getInstance("Default") returns while this provider is installed: SunJSSE's "TLS" context
+     * (so the jdk.tls.* properties apply, as they do to the JDK's default) with the merged trust managers and
+     * the javax.net.ssl.keyStore* key managers the JDK's default would have. One context is shared by every
+     * instance, as the JDK's is, so sessions are cached across callers.
+     */
+    public static final class DefaultContext extends javax.net.ssl.SSLContextSpi {
+        private static javax.net.ssl.SSLContext shared;
+
+        private final javax.net.ssl.SSLContext ctx;
+
+        public DefaultContext() throws java.security.GeneralSecurityException, java.io.IOException {
+            ctx = shared();
+        }
+
+        private static synchronized javax.net.ssl.SSLContext shared()
+                throws java.security.GeneralSecurityException, java.io.IOException {
+            if (shared == null) {
+                Factory f = new Factory();
+                f.engineInit((java.security.KeyStore) null);
+                javax.net.ssl.SSLContext c = javax.net.ssl.SSLContext.getInstance("TLS", "SunJSSE");
+                c.init(keyManagers(), f.engineGetTrustManagers(), null);
+                shared = c;
+            }
+            return shared;
+        }
+
+        /** The JDK default context's key managers: javax.net.ssl.keyStore* (an empty store when unset). */
+        private static javax.net.ssl.KeyManager[] keyManagers()
+                throws java.security.GeneralSecurityException, java.io.IOException {
+            String path = System.getProperty("javax.net.ssl.keyStore", "");
+            String type = System.getProperty("javax.net.ssl.keyStoreType", java.security.KeyStore.getDefaultType());
+            String prov = System.getProperty("javax.net.ssl.keyStoreProvider", "");
+            String pw = System.getProperty("javax.net.ssl.keyStorePassword", "");
+            char[] passwd = pw.isEmpty() ? null : pw.toCharArray();
+            java.security.KeyStore ks = null;
+            if (!type.isEmpty()) {
+                ks = prov.isEmpty() ? java.security.KeyStore.getInstance(type)
+                                    : java.security.KeyStore.getInstance(type, prov);
+                if (path.isEmpty() || path.equals("NONE")) {
+                    ks.load(null, passwd);
+                } else {
+                    try (java.io.InputStream in = new java.io.FileInputStream(path)) {
+                        ks.load(in, passwd);
+                    }
+                }
+            }
+            javax.net.ssl.KeyManagerFactory kmf = javax.net.ssl.KeyManagerFactory.getInstance(
+                javax.net.ssl.KeyManagerFactory.getDefaultAlgorithm());
+            kmf.init(ks, "PKCS11".equals(type) ? null : passwd);
+            return kmf.getKeyManagers();
+        }
+
+        @Override
+        protected void engineInit(javax.net.ssl.KeyManager[] km, javax.net.ssl.TrustManager[] tm,
+                java.security.SecureRandom sr) throws java.security.KeyManagementException {
+            throw new java.security.KeyManagementException("Default SSLContext is initialized automatically");
+        }
+
+        @Override
+        protected javax.net.ssl.SSLSocketFactory engineGetSocketFactory() {
+            return ctx.getSocketFactory();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLServerSocketFactory engineGetServerSocketFactory() {
+            return ctx.getServerSocketFactory();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLEngine engineCreateSSLEngine() {
+            return ctx.createSSLEngine();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLEngine engineCreateSSLEngine(String host, int port) {
+            return ctx.createSSLEngine(host, port);
+        }
+
+        @Override
+        protected javax.net.ssl.SSLSessionContext engineGetServerSessionContext() {
+            return ctx.getServerSessionContext();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLSessionContext engineGetClientSessionContext() {
+            return ctx.getClientSessionContext();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLParameters engineGetDefaultSSLParameters() {
+            return ctx.getDefaultSSLParameters();
+        }
+
+        @Override
+        protected javax.net.ssl.SSLParameters engineGetSupportedSSLParameters() {
+            return ctx.getSupportedSSLParameters();
+        }
     }
 
     // NativeLog is a native: a bare JVM (debug/gms.sh) has none bound.
