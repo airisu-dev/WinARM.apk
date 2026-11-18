@@ -95,6 +95,7 @@
 #include "app_runs.h"
 #include "install_names.h"
 #include "installs.h"
+#include "shortcut_rules.h"
 #include "updates.h"
 #include "../host/window_fit.h"
 #include "../include/winapk/arch.h"
@@ -581,6 +582,52 @@ void integrate_with_windows() {
     register_file_types(false);
 }
 
+bool read_shortcut(const fs::path& lnk, std::wstring* target, std::wstring* args) {
+    IShellLinkW* link = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link)))) return false;
+    IPersistFile* file = nullptr;
+    bool ok = SUCCEEDED(link->QueryInterface(IID_PPV_ARGS(&file)));
+    if (ok) {
+        wchar_t t[MAX_PATH] = {}, a[2048] = {};
+        ok = SUCCEEDED(file->Load(lnk.c_str(), STGM_READ)) &&
+             SUCCEEDED(link->GetPath(t, MAX_PATH, nullptr, SLGP_RAWPATH)) &&
+             SUCCEEDED(link->GetArguments(a, static_cast<int>(std::size(a))));
+        if (ok) *target = t, *args = a;
+        file->Release();
+    }
+    link->Release();
+    return ok;
+}
+
+// What the uninstaller runs (Win.apk.exe --uninstall-cleanup) before it deletes the program: the apps, their
+// data and the settings stay, so what points at the program goes. A file type is released only while it is
+// still ours; a desktop shortcut only when it is an app's that starts this launcher.
+void uninstall_cleanup() {
+    for (const wchar_t* ext : kExtensions) {
+        const std::wstring sub = std::wstring(L"Software\\Classes\\") + ext;
+        if (!winapk::launcher::owns_association(reg_default(sub))) continue;
+        HKEY key = nullptr;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, sub.c_str(), 0, KEY_SET_VALUE | KEY_QUERY_VALUE, &key) != ERROR_SUCCESS)
+            continue;
+        RegDeleteValueW(key, L"");
+        DWORD values = 1, subkeys = 1;
+        const bool queried = RegQueryInfoKeyW(key, nullptr, nullptr, nullptr, &subkeys, nullptr, nullptr, &values,
+                                              nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+        const bool empty = queried && !values && !subkeys;
+        RegCloseKey(key);
+        if (empty) RegDeleteKeyW(HKEY_CURRENT_USER, sub.c_str());
+    }
+    std::error_code ec;
+    const std::wstring self = exe_path().wstring();
+    for (const auto& e : fs::directory_iterator(known_folder(FOLDERID_Desktop), ec)) {
+        if (!e.is_regular_file(ec) || e.path().extension() != L".lnk") continue;
+        std::wstring target, args;
+        if (read_shortcut(e.path(), &target, &args) && winapk::launcher::is_own_app_shortcut(target, args, self))
+            fs::remove(e.path(), ec);
+    }
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+}
+
 // ---------------------------------------------------------------------------
 // The library
 
@@ -685,12 +732,17 @@ void remove_app_shortcuts(const App& app) {
 // what a shortcut holds changes. 2: Google's apps lost theirs.
 constexpr DWORD kShortcutVersion = 2;
 
+// The Start menu folder is missing after an uninstall (the apps, the settings and this version stay), so a
+// reinstall writes every app's shortcuts again, the desktop ones as the Desktop shortcut setting says.
 void refresh_app_shortcuts() {
-    if (setting(L"ShortcutVersion", 0) >= kShortcutVersion) return;
     std::error_code ec;
+    const bool menu = fs::exists(start_menu_apps(), ec);
+    if (!winapk::launcher::shortcuts_need_refresh(setting(L"ShortcutVersion", 0), kShortcutVersion, menu)) return;
+    const bool desktop_setting = setting(L"DesktopShortcut", 1) != 0;
     for (const App& app : library()) {
         const fs::path desktop = known_folder(FOLDERID_Desktop) / (file_name_safe(app.label) + L".lnk");
-        make_app_shortcuts(app, fs::exists(desktop, ec));
+        make_app_shortcuts(app,
+                           winapk::launcher::refresh_wants_desktop(menu, fs::exists(desktop, ec), desktop_setting));
     }
     set_setting(L"ShortcutVersion", kShortcutVersion);
 }
@@ -10287,6 +10339,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     OleInitialize(nullptr);
     int argc = 0;
     wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+
+    // The uninstaller's cleanup: no window, and no hand-off to a running library.
+    if (argc >= 2 && wcscmp(argv[1], L"--uninstall-cleanup") == 0) {
+        uninstall_cleanup();
+        LocalFree(argv);
+        OleUninitialize();
+        return 0;
+    }
 
     // The install helper, for apps that install apps.
     if (argc >= 2 && (wcscmp(argv[1], L"install") == 0 || wcscmp(argv[1], L"uninstall") == 0)) {

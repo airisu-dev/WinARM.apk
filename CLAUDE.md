@@ -61,7 +61,8 @@ state, layout, painting, dialogs, actions, pages (`Row`/`Section`/`Page`:
 Settings, App details, Store details, the Google services setup
 `show_gms_setup`), install window, log window, launch splash, drag and drop,
 `wnd_proc`, the installed-apps registry, the install helper (`install` and
-`uninstall` verbs), permissions (`namespace appops`: the signed app-ops store
+`uninstall` verbs), the uninstaller's `--uninstall-cleanup` (file types, app desktop shortcuts),
+permissions (`namespace appops`: the signed app-ops store
 and the questions the runtime asks through; `kGroupRows` must match the
 runtime's permission groups), single instance (`forward_to_running`,
 `maybe_quit`), `wWinMain`.

@@ -52,7 +52,9 @@ Logs:                      %LOCALAPPDATA%\Win.apk\logs (run-<app>.log is an
 Settings:                  HKEY_CURRENT_USER\Software\Win.apk
 
 Removing an app keeps what it saved unless you tick "Also remove accounts and
-data saved by the app"; uninstalling WinARM.apk keeps the apps too. Delete %LOCALAPPDATA%\Win.apk
+data saved by the app"; uninstalling WinARM.apk keeps the apps too (it removes their desktop
+shortcuts and the file types it set; installing it again brings the shortcuts
+back). Delete %LOCALAPPDATA%\Win.apk
 to start from scratch.
 
 Reporting a problem

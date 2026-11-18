@@ -60,7 +60,7 @@ Name: "{userprograms}\Win.apk"; Filename: "{app}\Win.apk.exe"; Comment: "Android
 Name: "{userdesktop}\Win.apk"; Filename: "{app}\Win.apk.exe"; Comment: "Android apps on Windows"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Classes\.apk"; ValueType: string; ValueData: "WinApk.Package"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.apk"; ValueType: string; ValueData: "WinApk.Package"
 Root: HKCU; Subkey: "Software\Classes\WinApk.Package"; ValueType: string; ValueData: "Android app"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\WinApk.Package\DefaultIcon"; ValueType: string; ValueData: """{app}\Win.apk.exe"",0"
 Root: HKCU; Subkey: "Software\Classes\WinApk.Package\shell\open\command"; ValueType: string; ValueData: """{app}\Win.apk.exe"" ""%1"""
@@ -68,6 +68,12 @@ Root: HKCU; Subkey: "Software\Classes\WinApk.Package\shell\open\command"; ValueT
 [UninstallDelete]
 ; The apps' shortcuts the library made (Start > Win.apk Apps).
 Type: filesandordirs; Name: "{userprograms}\Win.apk Apps"
+
+[UninstallRun]
+; Before the program is deleted: release the file types that are still Win.apk's (.apk, .apkm, .xapk, .apks; a
+; type another program has taken since is left to it) and delete the apps' desktop shortcuts, which would point
+; at nothing. Apps, their data and the settings stay. An upgrade does not run this.
+Filename: "{app}\Win.apk.exe"; Parameters: "--uninstall-cleanup"; Flags: runhidden waituntilterminated; RunOnceId: "UninstallCleanup"
 
 [Run]
 Filename: "{app}\Win.apk.exe"; Description: "Open Win.apk"; Flags: nowait postinstall skipifsilent

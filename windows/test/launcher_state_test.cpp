@@ -1,5 +1,5 @@
 // launcher_state_test.cpp -- winapk-launcher-state-test: the launcher's state machines
-// (launcher/app_runs.h, installs.h, install_names.h, updates.h), which hold no lock and make no Windows call,
+// (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, updates.h), which hold no lock and make no Windows call,
 // driven step by step as the library's thread and a worker's thread drive them.
 //
 //   winapk-launcher-state-test
@@ -22,6 +22,7 @@
 #include "../launcher/app_runs.h"
 #include "../launcher/install_names.h"
 #include "../launcher/installs.h"
+#include "../launcher/shortcut_rules.h"
 #include "../launcher/updates.h"
 
 namespace {
@@ -567,6 +568,33 @@ void test_install_names() {
     }
 }
 
+void test_shortcut_rules() {
+    using namespace winapk::launcher;
+    check("the ProgID is ours", owns_association(L"WinApk.Package"));
+    check("another program's type is not", !owns_association(L"Other.Handler"));
+    check("an empty type is not", !owns_association(L""));
+
+    const std::wstring exe = L"C:\\Users\\u\\AppData\\Local\\Programs\\Win.apk\\Win.apk.exe";
+    const std::wstring run = L"--run \"C:\\lib\\a.apk\"";
+    check("an app's shortcut to this launcher", is_own_app_shortcut(exe, run, exe));
+    check("case and slashes do not matter",
+          is_own_app_shortcut(L"c:/users/u/appdata/local/programs/win.apk/WIN.APK.EXE", run, exe));
+    check("the launcher's own shortcut has no --run", !is_own_app_shortcut(exe, L"", exe));
+    check("another program's shortcut", !is_own_app_shortcut(L"C:\\Windows\\notepad.exe", run, exe));
+    check("another build of the launcher", !is_own_app_shortcut(L"D:\\dev\\Win.apk.exe", run, exe));
+    check("a shortcut with no target", !is_own_app_shortcut(L"", run, exe));
+    check("a different verb", !is_own_app_shortcut(exe, L"--runner x", exe));
+    check("--run alone", is_own_app_shortcut(exe, L"--run", exe));
+
+    check("version behind: refresh", shortcuts_need_refresh(0, 2, true));
+    check("current and the folder there: no refresh", !shortcuts_need_refresh(2, 2, true));
+    check("current but the folder gone (after an uninstall): refresh", shortcuts_need_refresh(2, 2, false));
+    check("folder there: the user's desktop choice stands", refresh_wants_desktop(true, true, false) &&
+                                                               !refresh_wants_desktop(true, false, true));
+    check("folder gone: the setting decides", refresh_wants_desktop(false, false, true) &&
+                                                  !refresh_wants_desktop(false, true, false));
+}
+
 }  // namespace
 
 int main() {
@@ -574,6 +602,7 @@ int main() {
     test_installs();
     test_updates();
     test_install_names();
+    test_shortcut_rules();
     std::printf("%d failed\n", g_failures);
     return g_failures ? 1 : 0;
 }
