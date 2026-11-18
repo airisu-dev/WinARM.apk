@@ -1,6 +1,6 @@
 // launcher_state_test.cpp -- winapk-launcher-state-test: the launcher's state machines
-// (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, updates.h), which hold no lock and make no Windows call,
-// driven step by step as the library's thread and a worker's thread drive them.
+// (launcher/app_runs.h, installs.h, install_names.h, shortcut_rules.h, clear_library.h, updates.h), which hold
+// no lock and make no Windows call, driven step by step as the library's thread and a worker's thread drive them.
 //
 //   winapk-launcher-state-test
 //
@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "../launcher/app_runs.h"
+#include "../launcher/clear_library.h"
 #include "../launcher/install_names.h"
 #include "../launcher/installs.h"
 #include "../launcher/shortcut_rules.h"
@@ -607,6 +608,21 @@ void test_shortcut_rules() {
                                                   !refresh_wants_desktop(false, true, false));
 }
 
+void test_clear_outcome() {
+    std::printf("clear library\n");
+    using winapk::launcher::clear_outcome;
+    const auto none = clear_outcome({});
+    check("every app removed: success", none.ok && none.text == L"The library was cleared.");
+    const auto one = clear_outcome({L"Chess"});
+    check("one left: not a success, named, told to close it",
+          !one.ok && one.text.find(L"Chess") != std::wstring::npos &&
+              one.text.find(L"Close it") != std::wstring::npos && one.text.find(L"was cleared") == std::wstring::npos);
+    const auto many = clear_outcome({L"A", L"B", L"C"});
+    check("several left: counted, told to close them",
+          !many.ok && many.text.find(L"3 apps") != std::wstring::npos &&
+              many.text.find(L"Close them") != std::wstring::npos);
+}
+
 }  // namespace
 
 int main() {
@@ -615,6 +631,7 @@ int main() {
     test_updates();
     test_install_names();
     test_shortcut_rules();
+    test_clear_outcome();
     std::printf("%d failed\n", g_failures);
     return g_failures ? 1 : 0;
 }

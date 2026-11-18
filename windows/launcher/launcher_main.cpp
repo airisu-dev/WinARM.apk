@@ -94,6 +94,7 @@
 #include <vector>
 
 #include "app_runs.h"
+#include "clear_library.h"
 #include "install_names.h"
 #include "installs.h"
 #include "shortcut_rules.h"
@@ -4489,17 +4490,31 @@ bool confirm_remove(const App& a, bool* with_data) {
     return true;
 }
 
-// Removes the app (asking first when `ask`); `with_data` also deletes what it saved.
-bool remove_app(const App& app, bool ask, bool with_data = false) {
-    if (ask && !confirm_remove(app, &with_data)) return false;
-    const App copy = app;  // `app` may point into g_apps, which refresh() replaces
+enum class Removal {
+    kRemoved,
+    kBusy,    // it runs and could not be stopped: nothing changed
+    kLocked,  // its APK could not be deleted: the app stays in the library
+};
+
+// Removes the app and, with `with_data`, what it saved; no question and no message. The APK goes first: it is
+// what keeps the app in the library, so an app that cannot be removed stays whole.
+Removal remove_app_now(const App& copy, bool with_data) {
     std::error_code ec;
+    bool stopped = false;
     if (app_running(copy.name)) {
-        if (!appops::stop_runtime_of(copy.apk)) {
-            info(fmt(L"Close {0} first, then remove it.", {copy.label}), kError);
-            return false;
-        }
+        if (!appops::stop_runtime_of(copy.apk)) return Removal::kBusy;
         expect_run_end(copy.name);  // started from here: its exit is the removal, not a failure
+        stopped = true;
+    }
+    // A read-only APK (a downloaded file) is no reason to keep it. A runtime just ended can hold the APK for a
+    // moment longer: wait for that, about 0.5 s at most.
+    SetFileAttributesW(copy.apk.c_str(), FILE_ATTRIBUTE_NORMAL);
+    for (int tries = 0;; ++tries) {
+        ec.clear();
+        fs::remove(copy.apk, ec);
+        if (!ec) break;
+        if (!stopped || tries >= 10) return Removal::kLocked;
+        Sleep(50);
     }
     // Its permissions go with it, unless another copy in the library is the same package.
     const std::vector<std::string> pkg = package_of(copy.name);
@@ -4515,9 +4530,24 @@ bool remove_app(const App& app, bool ask, bool with_data = false) {
         if (!other && with_data) remove_app_data(pkg[0], others);
     }
     remove_app_shortcuts(copy);
-    fs::remove(copy.apk, ec);
     remove_app_files(copy.name);
     write_registry();
+    return Removal::kRemoved;
+}
+
+// Removes the app (asking first when `ask`); `with_data` also deletes what it saved.
+bool remove_app(const App& app, bool ask, bool with_data = false) {
+    if (ask && !confirm_remove(app, &with_data)) return false;
+    const App copy = app;  // `app` may point into g_apps, which refresh() replaces
+    switch (remove_app_now(copy, with_data)) {
+        case Removal::kBusy:
+            info(fmt(L"Close {0} first, then remove it.", {copy.label}), kError);
+            return false;
+        case Removal::kLocked:
+            info(fmt(L"{0} could not be removed. Close it and try again.", {copy.label}), kError);
+            return false;
+        case Removal::kRemoved: break;
+    }
     if (ask) {
         refresh();
         if (g_view == kAppView) set_view(kLibraryView);
@@ -6287,18 +6317,22 @@ std::vector<Section> settings_sections() {
         if (!system_app(a.name)) own.push_back(a);
     if (!own.empty()) {
         trouble.push_back(button_row(L"Clear library",
-                                     L"Uninstalls every app and removes its shortcuts. App data is kept.",
+                                     L"Uninstalls every app and removes its shortcuts. App data is kept; permissions "
+                                        L"are reset.",
                                      L"Clear…", [own] {
                                          if (!confirm(L"Clear the library?",
                                                       fmt(L"All {0} apps and their shortcuts will be removed. App "
-                                                          L"data is kept.",
+                                                          L"data is kept, permissions are reset.",
                                                           {std::to_wstring(own.size())}),
                                                       L"Clear library")) {
                                              return;
                                          }
-                                         for (const App& a : own) remove_app(a, false);
+                                         std::vector<std::wstring> left;
+                                         for (const App& a : own)
+                                             if (remove_app_now(a, false) != Removal::kRemoved) left.push_back(a.label);
                                          refresh();
-                                         info(L"The library was cleared.", kInfo);
+                                         const auto end = winapk::launcher::clear_outcome(left);
+                                         info(end.text, end.ok ? kInfo : kError);
                                      },
                                      true));
     }
