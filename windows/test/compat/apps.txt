@@ -3,6 +3,9 @@
 # versionCode" per line; the APK is fetched from
 # https://f-droid.org/repo/<package>_<versionCode>.apk (or /archive/ once
 # F-Droid retires the version).
+# Every pin is a build an ARM64 PC can run: arm64-v8a code or none (checked
+# against F-Droid's index 2026-11-17). First full sweep on windows-11-arm,
+# 2026-11-17: 77 of 92 drew (10 blank, 1 no frame, 4 crashed).
 #
 # Without native libraries, selected 2026-10-20 from 44 candidates:
 com.github.muellerma.coffee 47
@@ -91,20 +94,20 @@ org.schabi.newpipe 1015 org.schabi.newpipe_1015_cb84069.apk
 de.danoeh.antennapod 3120395
 
 # Cross-platform frameworks
-org.localsend.localsend_app 641                # Flutter, x86_64 build
-org.jitsi.meet 26000004                        # React Native (Hermes), x86_64 build
+org.localsend.localsend_app 643                # Flutter
+org.jitsi.meet 26000002                        # React Native (Hermes)
 org.jellyfin.mobile 2070399                    # WebView shell
 net.bible.android.activity 1117                # WebView content
 com.ominous.quickweather 112
 
 # Native-heavy, media, maps, devices
-org.videolan.vlc 13070208                      # libvlc, x86_64 build
+org.videolan.vlc 13070206                      # libvlc
 app.organicmaps 26092932                       # C++ map engine, OpenGL ES
 com.google.android.stardroid 1771              # OpenGL ES, sensors
 org.connectbot 11101000
 com.osfans.trime 20260901                      # input method (Rime, C++)
 com.menny.android.anysoftkeyboard 8175         # input method
-com.artifex.mupdf.viewer.app 270               # no x86_64 build: arm64-v8a
+com.artifex.mupdf.viewer.app 270               # MuPDF (C)
 com.termoneplus 571                            # terminal, pty in native code
 nodomain.freeyourgadget.gadgetbridge 255 nodomain.freeyourgadget.gadgetbridge_255_01cce93.apk
 de.blinkt.openvpn 225                          # VPN service
