@@ -26,6 +26,7 @@ java/android/content/ContentResolver.java	e488f17d307ee23c65526aa5f677a3e40a8c68
 java/android/content/pm/PackageManager.java	813b10de1f034c6c3547fd37cb3fa8191fd0808c
 java/android/content/pm/Signature.java	a16b8fceacc690d038cf7f0fb4da60fe61017fc8
 java/android/content/pm/dex/ArtManager.java	new
+java/android/content/res/TypedArray.java	71c3255b339aa33451b15f4a3de3132cd6d2649f
 java/android/hardware/camera2/CameraBackend.java	5b6d00e00c09408cacc49c2506b8e4654090e8b3
 java/android/hardware/camera2/CameraCaptureSessionImpl.java	cce3488c94563b747abdc6fde05c7a88e173fba1
 java/android/hardware/camera2/CameraManager.java	575316d9767f69028d4618fbf6b7ce25ada6b8c7
@@ -106,6 +107,7 @@ java/com/macapk/loader/SpecialAccessStore.java	f222bde81758721329198381db5e383a2
 java/com/macapk/loader/SystemClient.java	ab254f10c28ff6179fb6f17558e9dd726b40753f
 java/com/macapk/loader/SystemServer.java	d2c9244944e8df515e0559e2097ae14b54cfe962
 java/com/macapk/loader/TouchDispatcher.java	d97dabbdba75f8da2cf481ffb2b405b8621eefb8
+java/com/macapk/loader/ViewCanvasDriver.java	812f46db2571ed84c484f9c416f8aa24ec1d9287
 java/com/macapk/loader/ViewDump.java	new
 java/com/macapk/loader/WinProcesses.java	new
 java/com/macapk/loader/WindowOverlayStack.java	0a2d13cf6d0a33d6ee6a069c6aa4e87a57f46e0d

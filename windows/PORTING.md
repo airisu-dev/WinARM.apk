@@ -158,6 +158,10 @@ forbids are escaped.
   through `arm64_abi.cpp`, but these values are to be checked.
 - Signals are delivered for faults and self-sent signals
   (`src/bionic/signal.cpp`); POSIX timers are recorded only.
-- The window is painted from a readback of every frame; partial redraw
-  (`MACAPK_FRAMESPEED_DAMAGE=1`) is off by default.
+- On a GPU, GL frames, the view tree and SurfaceView frames reach the window as
+  DirectComposition layers (`host/gl/gl_present.h`); without one (WARP,
+  SwiftShader) or with "Enable GPU rendering" off, the window is painted from a
+  readback of every frame, as it is for the rest of a run once the GPU device
+  is lost (a driver reset). CI has no GPU, so only the readback runs there.
+  Partial redraw (`MACAPK_FRAMESPEED_DAMAGE=1`) is off by default.
 - No in-app purchases, Play Integrity or Vulkan; OpenSL ES is a stub.

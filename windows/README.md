@@ -132,7 +132,8 @@ gets paths in any language whole.
 | `WINAPK_PHONE_SIZE=WxH`, `WINAPK_RESIZABLE=0`, `WINAPK_DENSITY=<dpi>` | The phone size in dp, letterboxing instead of resizing, the density the app sees |
 | `WINAPK_ABIS` | Overrides the ABI list an install picks (tests) |
 | `WINAPK_ARM64_ALLOW_X18=1` | Loads a library although it uses x18 as scratch (`include/winapk/arm64_x18.h`), to see what it does. The first exception or Windows call made while its value is in x18 ends the process |
-| `WINAPK_FRAME_TIMING=1` | Every 5 s, a `[frame-timing]` line with a GL view's fps and each step's mean |
+| `WINAPK_FRAME_TIMING=1` | Every 5 s, a `[frame-timing]` line with a GL view's fps and each step's mean (`compose` is the GPU copy and present when frames go to the window on the GPU) |
+| `WINAPK_GL_PRESENT=readback`, `on` or `gpu` | GL frames, the view tree and SurfaceView frames go to the window as DirectComposition layers with no readback (`host/gl/gl_present.h`), on by default on a Direct3D 11 GPU (Settings > Apps > "Enable GPU rendering", `GpuPresent`; an app's own choice is `library\<name>.gpu`). `readback` turns it off, `on` turns it on, `gpu` forces it on with WARP too. Not with `WINAPK_HEADLESS_FRAME` |
 | `WINAPK_TEST_WORKAREA=<w>x<h>[+<x>+<y>]` | Stands in for the monitor's work area, in pixels; `@file` reads it from a file at every fit |
 | `WINAPK_TEST_RESIZE=<w>x<h>` | A second after the first frame, resizes the window's client area (CI's "Boot an APK in a window") |
 | `WINAPK_TEST_ANDROID_ROOT=<dir>`, `WINAPK_TEST_JAVA_BASE_PATCH=<dir>` | `winapk-binder-test` only: its JVM's android root and java.base overlay |
@@ -328,6 +329,15 @@ under `runtime/`):
   `ContentObserver`s of other processes through the broker (AOSP's
   `ContentService`, by authority), so the Play Store sees the Services
   Framework's settings change when a check-in finishes after it started.
+- `runtime/java/android/content/res/TypedArray.java`: a theme read of an app
+  attribute (a `0x7f` slot such as AppCompat's `windowNoTitle`) asks the whole
+  applied-style cascade for that exact key before the per-style walk, which
+  inside each style falls back to `android:X`. Android's theme is keyed by
+  attribute id, so a dialog style that sets only `android:windowNoTitle=false`
+  over an activity theme with `windowNoTitle=true` answers true there; here it
+  answered false, and AppCompat refused the dialog's window ("does not support
+  the current theme features": Waze's sign-in sheet).
+  `MACAPK_THEME_TIER_APP_ATTR_EXACT=0` restores the old walk.
 - `runtime/java/com/macapk/gms/GoogleAuthClient.java`, `AccountsService.java`:
   a sign-in from a master token fetches the account's gaia id when Google's
   answer leaves it out (a userinfo token), and the account row gets it as
@@ -489,6 +499,13 @@ under `runtime/`):
   AOSP's `PhoneWindow` does (a view added to the decor floats over the content),
   and `findViewById(android.R.id.content)` finds the sub-decor's frame in that
   tree before upstream's frame-root unwrap.
+- `runtime/java/android/app/Activity.java`: a canvas-path view's
+  `ViewCanvasDriver` is registered with the host behind `CanvasViewRenderer`,
+  which makes the hop to the main loop itself and drops the frame there once
+  the content swap has released the view. A frame the host asked for just
+  before the swap otherwise presented the old screen after it, and that frame
+  stayed as the overlay over a GL content view (glmark2's benchmark ran under a
+  frozen copy of its menu). On the Mac a view out of the window gets no draws.
 - `runtime/java/android/bluetooth/` (`BluetoothAdapter`, `BluetoothDevice`,
   `BluetoothGatt`, `BluetoothManager`, `le/BluetoothLeScanner`,
   `le/ScanRecord`): WinARM.apk's `HostBluetooth` versions (below); the pre-API-21

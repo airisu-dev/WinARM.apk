@@ -13,6 +13,7 @@
 #include <EGL/eglext.h>
 
 #include "gl/gl_loader.h"
+#include "gl/gl_present.h"
 
 namespace winapk::host {
 
@@ -30,10 +31,12 @@ std::mutex g_init_lock;
 
 struct ViewSurface {
     EGLSurface surface = EGL_NO_SURFACE;
+    void* share = nullptr;
     int w = 0, h = 0;
 };
 std::map<long long, ViewSurface> g_surfaces;
 int g_cur_w = 0, g_cur_h = 0;
+ViewSurface* g_cur = nullptr;
 
 EGLDisplay open_display(EGLint type, EGLint device) {
     using GetPlatformDisplay = EGLDisplay(EGLAPIENTRY*)(EGLenum, void*, const EGLint*);
@@ -191,11 +194,13 @@ bool gl_frame_begin(long long view, int w, int h) {
     ViewSurface& s = g_surfaces[view];
     if (s.surface == EGL_NO_SURFACE || s.w != w || s.h != h) {
         if (s.surface != EGL_NO_SURFACE) {
+            gl_present_forget(s.share);
             eglMakeCurrent(g_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
             eglDestroySurface(g_display, s.surface);
         }
         const EGLint attribs[] = {EGL_WIDTH, w, EGL_HEIGHT, h, EGL_NONE};
         s.surface = eglCreatePbufferSurface(g_display, g_config, attribs);
+        s.share = nullptr;
         s.w = w;
         s.h = h;
         if (s.surface == EGL_NO_SURFACE) return false;
@@ -203,6 +208,7 @@ bool gl_frame_begin(long long view, int w, int h) {
     if (!eglMakeCurrent(g_display, s.surface, s.surface, g_context)) return false;
     g_cur_w = w;
     g_cur_h = h;
+    g_cur = &s;
     return true;
 }
 
@@ -235,15 +241,34 @@ void gl_read_current(std::vector<uint32_t>* argb, int W, int H) {
     to_argb(pixels.data(), argb, W, H, swizzle);
 }
 
+void* gl_surface_share_handle(void* surface) {
+    using QuerySurfacePointer = EGLBoolean(EGLAPIENTRY*)(EGLDisplay, EGLSurface, EGLint, void**);
+    static const auto query = reinterpret_cast<QuerySurfacePointer>(eglGetProcAddress("eglQuerySurfacePointerANGLE"));
+    constexpr EGLint kShareHandle = 0x3200;  // EGL_D3D_TEXTURE_2D_SHARE_HANDLE_ANGLE
+    void* share = nullptr;
+    if (!query || g_display == EGL_NO_DISPLAY || !query(g_display, surface, kShareHandle, &share)) return nullptr;
+    return share;
+}
+
+void* gl_frame_share_handle(int* w, int* h) {
+    if (!g_cur || g_cur->surface == EGL_NO_SURFACE) return nullptr;
+    if (!g_cur->share) g_cur->share = gl_surface_share_handle(g_cur->surface);
+    *w = g_cur->w;
+    *h = g_cur->h;
+    return g_cur->share;
+}
+
 void* gl_shared_display() { return init() ? g_display : nullptr; }
 
 void gl_view_release(long long view) {
     auto it = g_surfaces.find(view);
     if (it == g_surfaces.end()) return;
     if (it->second.surface != EGL_NO_SURFACE) {
+        gl_present_forget(it->second.share);
         eglMakeCurrent(g_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         eglDestroySurface(g_display, it->second.surface);
     }
+    if (g_cur == &it->second) g_cur = nullptr;
     g_surfaces.erase(it);
 }
 

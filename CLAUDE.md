@@ -41,10 +41,11 @@ before; `last-run.log` the newest), `logs\install-<name>.log`,
 account and tokens), `cds\`, `cache\`, `run\<package>.pid` (each running app's
 run lock), `updates\`. Settings are in `HKCU\Software\Win.apk` (`Theme`,
 `PhoneSize`, `Landscape`, `DesktopShortcut`, `ShortcutVersion`,
-`UserFolders`, `AutoUpdate`, `LastUpdateCheck`, `GoogleServices`, `WindowWidth`,
+`UserFolders`, `GpuPresent`, `AutoUpdate`, `LastUpdateCheck`, `GoogleServices`, `WindowWidth`,
 `WindowHeight`, `WindowMaximized`); `launcher_main.cpp` has their defaults. Per
 app, beside its APK: `.label`, `.package`, `.orientation` (a per-app orientation
-override), `.window` (the window size once the user resizes it). Runtime env
+override), `.gpu` (the app's own "GPU rendering", passed as `WINAPK_GL_PRESENT`),
+`.window` (the window size once the user resizes it). Runtime env
 (the full list is in `windows/README.md`): `WINAPK_READY_EVENT` (launch
 handshake), `WINAPK_START_WINDOW`, `WINAPK_PHONE_SIZE=WxH` (dp),
 `WINAPK_RESIZABLE=0`, `WINAPK_HEADLESS=1`, `WINAPK_CDS=0`,

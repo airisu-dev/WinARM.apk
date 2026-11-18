@@ -227,7 +227,7 @@ if(WINAPK_JNI_INCLUDE)
                               host/runtime.rc)
   target_link_libraries(winapk-runtime PRIVATE winapk_jni winapk_sqlite webpdecoder winapk_stb_vorbis windowscodecs
                         ole32 mf mfplat mfreadwrite mfuuid shlwapi advapi32 shell32 uuid wlanapi iphlpapi bthprops winmm
-                        bcrypt psapi)
+                        bcrypt psapi d3d11 dxgi dcomp dwmapi)
   target_include_directories(winapk-runtime PRIVATE ${WINAPK_WEBP_DIR}/src)
   # WebView2 (host/webview2_host.h): the SDK's header to build against, from
   # scripts/fetch_webview2.sh; its WebView2Loader.dll is staged next to the
@@ -255,7 +255,8 @@ if(WINAPK_JNI_INCLUDE)
             ${CMAKE_CURRENT_SOURCE_DIR}/cmake/extract_gl_bridges.cmake
     COMMENT "Extracting upstream's GL bindings")
   target_sources(winapk-runtime PRIVATE host/gl/gl_loader.cpp host/gl/gl_stubs.cpp host/gl/gl_bridges.cpp
-                 host/gl/gl_surface.cpp host/gl/guest_gl.cpp host/native_window.cpp host/native_asset.cpp
+                 host/gl/gl_surface.cpp host/gl/gl_present.cpp host/gl/guest_gl.cpp host/native_window.cpp
+                 host/native_asset.cpp
                  host/native_opensles.cpp host/native_aaudio.cpp host/native_media.cpp
                  host/video_decode.cpp host/video_player.cpp host/native_media_video.cpp
                  host/media_encode.cpp host/mp4_writer.cpp host/native_media_codec.cpp

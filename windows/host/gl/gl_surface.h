@@ -29,6 +29,10 @@ bool gl_frame_read(std::vector<uint32_t>* argb, int* w, int* h);
 // Waits until the GPU has finished the current frame (WINAPK_FRAME_TIMING only).
 void gl_frame_finish();
 
+// D3D11 share handles: the last begin's pbuffer (and its size), any pbuffer.
+void* gl_frame_share_handle(int* w, int* h);
+void* gl_surface_share_handle(void* surface);
+
 // Drops a view's pbuffer.
 void gl_view_release(long long view);
 
