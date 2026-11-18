@@ -1,5 +1,6 @@
 // page_sync.h -- what a page that is built again on its own (App details, when its app starts or quits)
-// keeps and decides. No Windows call, so test/launcher_state_test.cpp drives it.
+// keeps and decides, and the set of running apps the library's tiles show. No Windows call, so
+// test/launcher_state_test.cpp drives it.
 //
 // A page's controls are its targets: the rows that are not plain text, in order. hot (the pointer) and
 // focus (Tab) are indexes into them, so a row that appears or goes shifts every control after it;
@@ -7,7 +8,10 @@
 
 #pragma once
 
+#include <cstddef>
+#include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace winapk::launcher {
@@ -40,6 +44,28 @@ inline int remap_target(const std::vector<TargetKey>& before, int index, const s
 // check finds it still differs and builds it then.
 inline bool details_rebuild_due(bool shown_running, bool running, bool blocked) {
     return shown_running != running && !blocked;
+}
+
+// The library's running badge and "N running": an app is running when the library started it (`started`, known
+// at once from the run events) or when it runs in a process of its own (a shortcut), which only a check of
+// the app's mutex finds. That check is kept in `own`, refreshed on a timer, so painting opens no mutex.
+using NameSet = std::set<std::wstring>;
+
+// `own` becomes `now`; whether that changed it (the library repaints only then).
+inline bool replace_if_changed(NameSet& own, NameSet now) {
+    if (own == now) return false;
+    own = std::move(now);
+    return true;
+}
+
+// How many different apps run, an app that is both counted once; `skip` names the ones not to count.
+template <class Skip>
+size_t running_count(const std::vector<std::wstring>& started, const NameSet& own, Skip skip) {
+    NameSet all(own.begin(), own.end());
+    all.insert(started.begin(), started.end());
+    size_t n = 0;
+    for (const std::wstring& name : all) n += !skip(name);
+    return n;
 }
 
 }  // namespace winapk::launcher

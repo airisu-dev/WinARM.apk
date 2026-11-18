@@ -141,8 +141,8 @@ constexpr UINT_PTR kInfoBarTimer = 2;  // the InfoBar closes itself
 constexpr UINT_PTR kUpdateTimer = 3;   // hourly: is the daily update check due?
 constexpr UINT_PTR kSetupScanTimer = 4;  // the Downloads folder settled: look for new files in it
 constexpr ULONG_PTR kCopyOpen = 0x57415031;  // WM_COPYDATA from another start of Win.apk.exe (forward_to_running)
-constexpr UINT_PTR kDetailsTimer = 5;  // App details open: has its app started or quit on its own?
-constexpr UINT kDetailsPollMs = 1500;
+constexpr UINT_PTR kRunningTimer = 5;  // Has an app started or quit on its own? (library or App details on screen)
+constexpr UINT kRunningPollMs = 1500;
 constexpr UINT_PTR kAnimTimer = 1;
 constexpr int kIdSearch = 100;
 enum Cmd { kCmdOpen = 200, kCmdStop, kCmdInfo, kCmdRemove };
@@ -881,6 +881,13 @@ bool run_active(const std::wstring& name) {
 // details page show as running.
 bool app_is_running(const std::wstring& name) { return run_active(name) || app_running(name); }
 
+// The apps found running in a process of their own (a shortcut) by the last check; UI thread only. Painting
+// reads it instead of opening each app's mutex.
+winapk::launcher::NameSet g_own_running;
+
+// Whether the tile shows the app as running: started from here (known at once) or found running on its own.
+bool tile_running(const std::wstring& name) { return run_active(name) || g_own_running.count(name) != 0; }
+
 void details_sync(const std::wstring& name);
 
 bool any_runs() {
@@ -890,6 +897,8 @@ bool any_runs() {
     return any;
 }
 
+// The apps started from here: the launcher's own work, unlike tile_running's, which holds the ones that
+// were started on their own too.
 std::vector<std::wstring> run_names() {
     AcquireSRWLockShared(&g_proc_lock);
     std::vector<std::wstring> names = g_runs.names();
@@ -3307,7 +3316,7 @@ void paint_toolbar(Graphics& g) {
     } else {
         size_t shown = 0, running = 0;  // the library's own apps: not Google's system components
         for (const Tile& tile : g_tiles) shown += tile.app >= 0;
-        for (const std::wstring& r : run_names()) running += !system_app(r);
+        running = winapk::launcher::running_count(run_names(), g_own_running, system_app);
         sub = shown == 0 ? std::wstring(L"No apps installed yet") : app_count(shown);
         if (running) sub += L"  ·  " + fmt(L"{0} running", {std::to_wstring(running)});
         if (const std::wstring now = current_install(); !now.empty()) {
@@ -3353,7 +3362,7 @@ void paint_tile(Graphics& g, int i) {
     const App* app = t.app >= 0 ? &g_apps[static_cast<size_t>(t.app)] : nullptr;
     const bool sel = app && app->name == g_selected;
     const bool hot = g_hot.kind == kHitTile && g_hot.tile == i;
-    const bool running = app && run_active(app->name);
+    const bool running = app && tile_running(app->name);
     if (sel) {
         fill_round(g, r, px(kRadiusTile), with_alpha(g_t.accent, g_t.dark ? 56 : 30));
         stroke_round(g, r, px(kRadiusTile), with_alpha(g_t.accent, 170));
@@ -4964,7 +4973,7 @@ struct Page {
 } g_page;
 
 bool g_details_running = false;  // whether the App details page built last showed its app as running
-bool g_details_timer = false;    // kDetailsTimer is set
+bool g_running_timer = false;  // kRunningTimer is set
 
 constexpr int kPageBack = -2, kPageThumb = -3;
 
@@ -5181,19 +5190,34 @@ void details_sync(const std::wstring& name) {
     if (winapk::launcher::details_rebuild_due(g_details_running, app_is_running(name), blocked)) rebuild_page();
 }
 
-// Only App details, while the library is on screen, looks for an app that started or quit on its own (a
-// shortcut starts it in a process of its own, which sends the library nothing).
-// `shown`: the window is on screen and not minimized; the caller says it when the window's own state lags.
-void update_details_timer(bool shown) {
-    if (g_view == kAppView && shown) {
-        if (!g_details_timer) g_details_timer = SetTimer(g_main, kDetailsTimer, kDetailsPollMs, nullptr) != 0;
-    } else if (g_details_timer) {
-        KillTimer(g_main, kDetailsTimer);
-        g_details_timer = false;
+// Looks for the library's apps that run in a process of their own; repaints only when that set changed.
+void refresh_own_running() {
+    winapk::launcher::NameSet now;
+    for (const App& a : g_apps) {
+        // system_app reads a file, so the cheap mutex check goes first.
+        if (app_running(a.name) && !system_app(a.name)) now.insert(a.name);
+    }
+    if (winapk::launcher::replace_if_changed(g_own_running, std::move(now)) && g_view == kLibraryView) {
+        InvalidateRect(g_main, nullptr, FALSE);
     }
 }
 
-void update_details_timer() { update_details_timer(IsWindowVisible(g_main) && !IsIconic(g_main)); }
+// Only the library and App details, while on screen, look for an app that started or quit on its own (a
+// shortcut starts it in a process of its own, which sends the library nothing).
+// `shown`: the window is on screen and not minimized; the caller says it when the window's own state lags.
+void update_running_timer(bool shown) {
+    if ((g_view == kAppView || g_view == kLibraryView) && shown) {
+        if (!g_running_timer) {
+            g_running_timer = SetTimer(g_main, kRunningTimer, kRunningPollMs, nullptr) != 0;
+            if (g_running_timer) refresh_own_running();  // what changed while it was off
+        }
+    } else if (g_running_timer) {
+        KillTimer(g_main, kRunningTimer);
+        g_running_timer = false;
+    }
+}
+
+void update_running_timer() { update_running_timer(IsWindowVisible(g_main) && !IsIconic(g_main)); }
 
 void page_back() {
     if (g_page.back) set_view(g_page.from);
@@ -7994,6 +8018,7 @@ void command(int id);
 // The tile's menu, under the app's icon and name: Open, Stop while it runs, App details, Remove.
 // Everything else is on the details page.
 void show_context_menu(const App& app, POINT pt, bool keyboard = false) {
+    refresh_own_running();  // the tile behind the menu shows what the menu says
     const bool running = app_is_running(app.name);
     const bool pending = is_pending(app.name);
     PopupMenu m;
@@ -8069,7 +8094,7 @@ std::wstring tooltip_text(const Hit& h) {
             const Tile& t = g_tiles[static_cast<size_t>(h.tile)];
             if (t.app < 0) return fmt(L"Installing {0}…", {job_label(t.job)});
             const App& a = g_apps[static_cast<size_t>(t.app)];
-            return run_active(a.name) ? a.label + L"  ·  " + L"Running" : a.label;
+            return tile_running(a.name) ? a.label + L"  ·  " + L"Running" : a.label;
         }
         default: return L"";
     }
@@ -8157,7 +8182,7 @@ void set_view(View view) {
     }
     rebuild_tiles();
     update_timer();
-    update_details_timer();
+    update_running_timer();
 }
 
 void set_hot(const Hit& h) {
@@ -8197,10 +8222,10 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             compute_layout();
             InvalidateRect(hwnd, nullptr, FALSE);
-            update_details_timer(wp != SIZE_MINIMIZED && IsWindowVisible(hwnd));
+            update_running_timer(wp != SIZE_MINIMIZED && IsWindowVisible(hwnd));
             return 0;
         case WM_SHOWWINDOW:  // sent before the window is shown or hidden: IsWindowVisible has not changed yet
-            update_details_timer(wp != FALSE && !IsIconic(hwnd));
+            update_running_timer(wp != FALSE && !IsIconic(hwnd));
             break;
         case WM_DPICHANGED: {
             g_dpi = HIWORD(wp);
@@ -8302,7 +8327,10 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             }
             if (wp == kInfoBarTimer) info(L"", kInfo);
             if (wp == kUpdateTimer) auto_update_check();
-            if (wp == kDetailsTimer && g_view == kAppView) details_sync(g_page.app);
+            if (wp == kRunningTimer) {
+                if (g_view == kAppView) details_sync(g_page.app);
+                else if (g_view == kLibraryView) refresh_own_running();
+            }
             if (wp == kSetupScanTimer) {
                 KillTimer(hwnd, kSetupScanTimer);
                 if (g_view == kGmsSetupView) {
@@ -8603,6 +8631,7 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             std::unique_ptr<std::wstring> name(reinterpret_cast<std::wstring*>(lp));
             const RunEnd end = finish_run(*name);
             update_timer();
+            if (g_running_timer) refresh_own_running();  // its mutex went with the process
             details_sync(*name);
             InvalidateRect(hwnd, nullptr, FALSE);
             const std::wstring label = label_of(*name);

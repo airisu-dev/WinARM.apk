@@ -651,6 +651,24 @@ void test_page_sync() {
               remap_target(idle, -3, running) == -3);
     check("a repeated title: the same one of them",
           remap_target({gpu, gpu, remove}, 1, {gpu, gpu, stop, remove}) == 1);
+
+    using winapk::launcher::NameSet;
+    using winapk::launcher::replace_if_changed;
+    using winapk::launcher::running_count;
+    const auto none = [](const std::wstring&) { return false; };
+    const auto not_an_app = [](const std::wstring& n) { return n == L"Play services"; };
+    check("only started from here: counted", running_count({L"A", L"B"}, {}, none) == 2);
+    check("only in its own process: counted", running_count({}, {L"A"}, none) == 1);
+    check("both ways at once: counted once", running_count({L"A", L"B"}, {L"B", L"C"}, none) == 3);
+    check("same app both ways: once", running_count({L"A"}, {L"A"}, none) == 1);
+    check("a system component is not counted", running_count({L"Play services"}, {L"A"}, not_an_app) == 1);
+    check("nothing runs: none", running_count({}, {}, none) == 0);
+
+    NameSet own;
+    check("an app starts on its own: changed", replace_if_changed(own, {L"A"}) && own.count(L"A") == 1);
+    check("nothing new: unchanged (no repaint)", !replace_if_changed(own, {L"A"}));
+    check("it quits: changed", replace_if_changed(own, {}) && own.empty());
+    check("still none: unchanged", !replace_if_changed(own, {}));
 }
 
 }  // namespace

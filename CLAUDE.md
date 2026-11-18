@@ -87,9 +87,12 @@ runtime's permission groups), single instance (`forward_to_running`,
   everything else per app is on the App details page. Don't add a second way
   to an action. Report a problem is `report_problem` (a prefilled issue URL;
   nothing is uploaded).
-- App details watches its app: `details_sync` builds the page again when the app starts or quits (a launcher run's
-  events, and `kDetailsTimer`, which runs only while that page is on screen, for an app started in its own process).
-  Is-it-running is `app_is_running`.
+- The library watches its apps: `kRunningTimer` (1.5 s) runs only while the library or App details is on screen
+  (visible, not minimized), for an app started in a process of its own (a shortcut), which sends the library nothing.
+  In the library it refreshes `g_own_running`, so the tile's badge and the "N running" count (`tile_running`,
+  `running_count`) agree with the menu and open no mutex while painting; in App details `details_sync` builds the
+  page again when the app starts or quits. A launcher run's events do both at once. Is-it-running is
+  `app_is_running`; an app in a process of its own is not the launcher's work (`any_runs`, `has_work` ignore it).
 - Menus (`PopupMenu`) and dialogs (`Prompt`: `run_dialog`, and `run_prompt` for
   an app's questions) are the launcher's own, not the system's.
 - Points from screen coordinates (WM_NCHITTEST's) go through `client_point`.
