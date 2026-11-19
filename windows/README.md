@@ -199,7 +199,7 @@ Every test is a program built by CMake; `win-ci.yml` runs each on
 | `winapk-gl-test` | ANGLE makes a context and the read-back frame has the right colors |
 | `winapk-binder-test` | `host/binder_win.cpp` between three real JVMs (`BinderTransportTest.java`: transact, oneway order, binder identity, fds, death notification, the broker's caller checks, the Google account mirror); and java.io's opens (`FileShareDeleteTest.java`) |
 | `test/java/*Test.java` | Framework pieces against the built jars: file separators, renames, Android paths, damage rectangles, camera2 stills, host network, touch, permissions, APK signatures, App Links, scan records |
-| `test/apicov/run_test.sh` | The API coverage tool against a fixture: one planted class or member per state, the signature format's hard cases (annotations with arguments, generics and their erasure, varargs, nested and inner classes, `java.lang` short names) and its constants |
+| `test/apicov/run_test.sh` | The API coverage tool against a fixture (plain Java: CI runs it on Ubuntu): one planted class or member per state, the signature format's hard cases (annotations with arguments, generics and their erasure, varargs, nested and inner classes, `java.lang` short names) and its constants |
 | CI steps | The staged runtime boots an F-Droid APK headless and in a window (with a resize), class-data sharing maps on the second start, a service host is replaced by the user's start, `--gms selftest`/`status`, `--verify-apk` |
 
 The guest libraries are built with plain clang + lld (`test/build_guest.sh`,
@@ -269,7 +269,7 @@ it. Needs a JDK 21 and curl.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
+| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the API coverage tool's test on Ubuntu beside them; the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
 | `.github/workflows/win-release.yml` | By hand, with a dated tag such as `v26.1118.0-preview` | Builds and smoke-tests on `windows-11-arm`, then publishes `Win.apk-Setup-arm64.exe` and `Win.apk-windows-arm64.zip` as a pre-release with `package/RELEASE_NOTES.md` as the notes |
 
 Inno Setup only packs files, so the packaging jobs run on `windows-latest`.

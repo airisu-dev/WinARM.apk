@@ -1,10 +1,11 @@
 # Win.apk's build and tests, on Windows on Arm (windows-11-arm):
 #
 #   What changed ──┬─ Guest libraries (Ubuntu) ─┬─ Unit tests
-#                  └─ Build (ARM64, ccache) ────┼─ Runtime tests
-#                                               ├─ App smoke test
-#                                               ├─ Package (preview + installer)
-#                                               └─ Sweep 1/4 .. 4/4 ─ Sweep report  (only when asked)
+#                  ├─ Build (ARM64, ccache) ────┼─ Runtime tests
+#                  │                            ├─ App smoke test
+#                  │                            ├─ Package (preview + installer)
+#                  │                            └─ Sweep 1/4 .. 4/4 ─ Sweep report  (only when asked)
+#                  └─ API coverage tool test (Ubuntu)
 #
 # The build runs once; the other jobs take its exes and staged runtime as
 # artifacts. Every pull request boots the smoke set (windows/test/compat/smoke.txt)
@@ -109,6 +110,22 @@ jobs:
             ${{ runner.temp }}/guest/aarch64/link/*.so
             ${{ runner.temp }}/guest/e2e/arm64/libwinapk_jni_guest.so
             ${{ runner.temp }}/guest/e2e/classes/**
+
+  apicov-test:
+    # Plain Java: it needs neither the ARM64 build nor Windows, so it runs at once, beside the other jobs.
+    name: API coverage tool test
+    needs: changes
+    if: needs.changes.outputs.tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run the API coverage tool test
+        run: windows/test/apicov/run_test.sh "$RUNNER_TEMP/apicov"
 
   build:
     # Temurin, because other aarch64 JDKs' jni_md.h make jint a long.
@@ -377,10 +394,6 @@ jobs:
             ./build/winapk-binder-test.exe "$cp;$(cygpath -w build/share-delete-test)" FileShareDeleteTest \
             | tee share-delete-test.log
           grep -q "ALL PASSED" share-delete-test.log
-      - name: Run the API coverage tool test
-        run: |
-          export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
-          windows/test/apicov/run_test.sh "$RUNNER_TEMP/apicov"
       - name: Run the GL test
         run: |
           # ANGLE is next to it in stage/bin; with no GPU it falls back to WARP or SwiftShader.
