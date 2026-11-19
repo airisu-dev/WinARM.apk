@@ -377,6 +377,10 @@ jobs:
             ./build/winapk-binder-test.exe "$cp;$(cygpath -w build/share-delete-test)" FileShareDeleteTest \
             | tee share-delete-test.log
           grep -q "ALL PASSED" share-delete-test.log
+      - name: Run the API coverage tool test
+        run: |
+          export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
+          windows/test/apicov/run_test.sh "$RUNNER_TEMP/apicov"
       - name: Run the GL test
         run: |
           # ANGLE is next to it in stage/bin; with no GPU it falls back to WARP or SwiftShader.

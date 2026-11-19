@@ -1,0 +1,87 @@
+// Signature format: 2.0
+package fx {
+
+  public abstract class Abs {
+    ctor public Abs();
+    method public void conc();
+  }
+
+  public class Base {
+    ctor public Base();
+    method public void inherited();
+  }
+
+  public enum Color {
+    enum_constant public static final fx.Color RED;
+  }
+
+  public final class FinalCls {
+    ctor public FinalCls();
+  }
+
+  public class Hier implements java.io.Serializable {
+    ctor public Hier();
+  }
+
+  public interface Iface {
+    method public default void dflt();
+    method public static int sm();
+    field public static final int IC = 3; // 0x3
+  }
+
+  public class Kind {
+    ctor public Kind();
+  }
+
+  @java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) public @interface Mark {
+    method public abstract String value() default "";
+  }
+
+  public class Missing {
+    ctor public Missing();
+    method public void any();
+  }
+
+  public class NotFinal {
+    ctor public NotFinal();
+  }
+
+  public class Ok extends fx.Base implements fx.Iface {
+    ctor public Ok();
+    method @RequiresPermission(anyOf={"a, b", "c = d"}) public void ann(@IntRange(from=0) int);
+    method public <T extends java.lang.CharSequence> T bound(T);
+    method public void fin();
+    method public void gone();
+    method public void many(@NonNull int...);
+    method public final void pairs(java.util.Map.Entry<String,java.lang.Integer>...);
+    method public String name(Object, Thread.State);
+    method public int plain(String);
+    method public int ret();
+    method public static void stat();
+    method public void vis();
+    method public java.util.List<? extends java.lang.Number>[] wild(java.lang.Class<?>...);
+    field public static final char CH = 115; // 0x0073 's'
+    field public static final int CONST = 5; // 0x5
+    field public static final int K = 1; // 0x1
+    field public static final long L = -1L; // 0xffffffffffffffffL
+    field public static final float NAN = (0.0f/0.0f);
+    field public static final String S = "a\"bé";
+    field public long count;
+    field public int typed;
+  }
+
+  public class Outer<T extends java.lang.Number> {
+    ctor public Outer();
+  }
+
+  public class Outer.Inner {
+    ctor public Outer.Inner(int);
+    method public T get();
+  }
+
+  public static class Outer.Nested {
+    ctor public Outer.Nested(int);
+  }
+
+}
+
