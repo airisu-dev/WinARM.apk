@@ -171,6 +171,10 @@ jclass load_class(JNIEnv* env, const Reflection& r, const char* name) {
 
 constexpr jint kAccNative = 0x100;
 
+void list_native(NativeStats* stats, const char* clazz, const char* name, const char* sig, const char* how) {
+    if (stats->listing) stats->listing->push_back(std::string(clazz) + " " + name + " " + sig + " " + how);
+}
+
 }  // namespace
 
 bool register_host_natives(JNIEnv* env, jvmtiEnv* jvmti, NativeStats* stats) {
@@ -206,6 +210,7 @@ bool register_host_natives(JNIEnv* env, jvmtiEnv* jvmti, NativeStats* stats) {
                     if (const JNINativeMethod* impl = implementation_of(clazz, name, sig)) {
                         bind.push_back(*impl);
                         ++stats->implemented;
+                        list_native(stats, clazz, name, sig, "implemented");
                     } else {
                         auto* tag = new StubTag();
                         tag->method = std::string(clazz) + "." + name + sig;
@@ -215,6 +220,7 @@ bool register_host_natives(JNIEnv* env, jvmtiEnv* jvmti, NativeStats* stats) {
                         strings.emplace_back(sig);
                         bind.push_back({name_copy, &strings.back()[0], stub});
                         ++stats->stubbed;
+                        list_native(stats, clazz, name, sig, "stub");
                     }
                     jvmti->Deallocate(reinterpret_cast<unsigned char*>(name));
                     jvmti->Deallocate(reinterpret_cast<unsigned char*>(sig));

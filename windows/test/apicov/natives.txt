@@ -1,0 +1,2 @@
+fb.Body natImpl ()I implemented
+fb.Body natStub ()I stub

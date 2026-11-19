@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
 
 #include <jni.h>
 #include <jvmti.h>
@@ -104,6 +105,8 @@ struct NativeStats {
     int classes = 0;        // host classes found
     int implemented = 0;    // methods bound to a Windows implementation
     int stubbed = 0;        // methods bound to a stub
+    // When set, one line per method: "<class> <name> <signature> implemented|stub" (winapk-runtime --list-natives).
+    std::vector<std::string>* listing = nullptr;
 };
 
 // Binds every native method of the host classes. `jvmti` is used to read each

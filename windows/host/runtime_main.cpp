@@ -18,6 +18,7 @@
 //   winapk-runtime --java-main --jdk <dir> --cp <jar> <class> [args...]   (internal: run_java)
 //   winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --system   (the system broker, below)
 //   winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --cds-prepare   (the framework archive now, cds.h)
+//   winapk-runtime [--jdk <dir>] [--lib <dir>] --list-natives <file>   (the host natives and which are stubs)
 //   winapk-runtime --cds-dump ...   (internal: the framework archive's background dump)
 //
 // --system runs upstream's system broker (com.macapk.loader.SystemServer: how
@@ -100,6 +101,7 @@ struct Options {
     bool system = false;  // --system: the system broker, no app
     bool cds_prepare = false;  // --cds-prepare: make the framework archive (cds.h) and stop
     bool verify = false;  // --verify-apk <app>: com.winapk.tools.ApkCheck on `apk`, no app run
+    fs::path list_natives;  // --list-natives <file>: every host native and whether it is a stub, no app (tools/apicov)
 };
 
 std::string utf8(const std::wstring& w) {
@@ -265,6 +267,7 @@ bool parse_args(int argc, wchar_t** argv, Options* o) {
         else if (a == L"--package-to") ok = value(&o->package_to);
         else if (a == L"--system") o->system = true;
         else if (a == L"--cds-prepare") o->cds_prepare = true;
+        else if (a == L"--list-natives") ok = value(&o->list_natives);
         else if (a == L"--verify-apk") {
             o->verify = true;
             ok = value(&o->apk);
@@ -278,13 +281,13 @@ bool parse_args(int argc, wchar_t** argv, Options* o) {
         } else ok = false;
         if (!ok) return false;
     }
-    return !o->apk.empty() || o->gms || o->system || o->cds_prepare;
+    return !o->apk.empty() || o->gms || o->system || o->cds_prepare || !o->list_natives.empty();
 }
 
 // Fills in whatever the command line left out, and checks it exists.
 bool resolve_paths(Options* o) {
     std::error_code ec;
-    if (!o->gms && !o->system && !o->cds_prepare) {
+    if (!o->gms && !o->system && !o->cds_prepare && o->list_natives.empty()) {
         o->apk = fs::absolute(o->apk, ec);
         if (!fs::is_regular_file(o->apk, ec)) {
             std::fprintf(stderr, "[win.apk] no such APK: %s\n", utf8(o->apk.wstring()).c_str());
@@ -933,6 +936,45 @@ DWORD WINAPI system_thread(void* param) {
     return 0;
 }
 
+// --list-natives <file>: the JVM and the host natives, bound as for an app, and no app. Writes each native
+// method of the host classes with "implemented" or "stub", for the API coverage report (tools/apicov), so it
+// learns which natives return zero from the binding itself rather than from a second list.
+DWORD WINAPI list_natives_thread(void* param) {
+    auto* b = static_cast<BootArgs*>(param);
+    const Options& o = b->options;
+    b->result = 1;
+    HMODULE jvm = load_jvm(o.jdk);
+    if (!jvm) return 1;
+    std::vector<std::string> opts = jvm_options(*b);
+    JavaVM* vm = nullptr;
+    JNIEnv* env = nullptr;
+    if (!create_vm(jvm, opts, &vm, &env)) return 1;
+    jvmtiEnv* jvmti = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&jvmti), JVMTI_VERSION_1_2) != JNI_OK) {
+        std::fprintf(stderr, "[win.apk] no JVMTI\n");
+        return 1;
+    }
+    std::vector<std::string> listing;
+    winapk::host::NativeStats stats;
+    stats.listing = &listing;
+    if (!winapk::host::register_host_natives(env, jvmti, &stats)) {
+        std::fprintf(stderr, "[win.apk] binding host natives failed\n");
+        return 1;
+    }
+    std::sort(listing.begin(), listing.end());
+    FILE* f = _wfopen(o.list_natives.c_str(), L"wb");
+    if (!f) {
+        std::fprintf(stderr, "[win.apk] cannot write %s\n", utf8(o.list_natives.wstring()).c_str());
+        return 1;
+    }
+    for (const std::string& line : listing) std::fprintf(f, "%s\n", line.c_str());
+    const bool written = std::fclose(f) == 0;
+    std::fprintf(stderr, "[win.apk] host natives: %d classes, %d implemented, %d stubbed\n", stats.classes,
+                 stats.implemented, stats.stubbed);
+    b->result = written ? 0 : 1;
+    return 0;
+}
+
 // Steps 3 to 5, on the large-stack thread.
 DWORD WINAPI boot_thread(void* param) {
     auto* b = static_cast<BootArgs*>(param);
@@ -1227,13 +1269,24 @@ int wmain(int argc, wchar_t** argv) {
                      "       winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --gms <subcommand> [args]\n"
                      "       winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --system\n"
                      "       winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --verify-apk <app>\n"
-                     "       winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --cds-prepare\n");
+                     "       winapk-runtime [--data <dir>] [--jdk <dir>] [--lib <dir>] --cds-prepare\n"
+                     "       winapk-runtime [--jdk <dir>] [--lib <dir>] --list-natives <file>\n");
         return 2;
     }
     if (!resolve_paths(&b.options)) return 2;
     if (b.options.cds_prepare) {
         jvm_options(b);  // the options, and with them the archive's key, an app's start would have
         return winapk::host::cds_prepare();
+    }
+    if (!b.options.list_natives.empty()) {
+        // No class-data sharing: a listing needs no archive, and must leave the data folder (<data>\cds) as it is.
+        SetEnvironmentVariableW(L"WINAPK_CDS", L"0");
+        HANDLE t = CreateThread(nullptr, 64 * 1024 * 1024, list_natives_thread, &b, STACK_SIZE_PARAM_IS_A_RESERVATION,
+                                nullptr);
+        if (!t) return 1;
+        WaitForSingleObject(t, INFINITE);
+        CloseHandle(t);
+        return b.result;
     }
     // A crash from here on also leaves logs\crash-<app>-<time>.dmp.
     winapk::host::set_crash_dump_location(b.options.data / "logs",

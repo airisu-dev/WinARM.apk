@@ -85,3 +85,38 @@ package fx {
 
 }
 
+package fb {
+
+  public abstract class Absy {
+    ctor public Absy();
+    method public void concreteEmpty();
+    method public abstract void hook();
+  }
+
+  public class Body {
+    ctor public Body();
+    method public void emptyBoth();
+    method public void emptyStub();
+    method public void inheritedReal();
+    method public int natImpl();
+    method public int natStub();
+    method public int natUnbound();
+    method public void notInAosp();
+    method public Object nullBoth();
+    method public void realHere();
+    method public int stubInt();
+    method public void throwsBoth();
+    method public String throwsStub();
+  }
+
+  public interface Cb {
+    method public default void onDefault();
+    method public void onThing();
+  }
+
+  public class Ctor {
+    ctor public Ctor(int);
+  }
+
+}
+

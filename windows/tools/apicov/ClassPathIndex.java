@@ -8,8 +8,8 @@
 //   2. Any other package comes from the class path, the first entry that has the
 //      class winning: android-framework.jar, macapk-loader.jar, bcprov.
 //
-// Classes are read on demand, headers and member signatures only (ASM with
-// SKIP_CODE), and kept.
+// Classes are read on demand, and kept: headers, member signatures, and for
+// each method the shape of its code (BodyClass).
 
 package com.winapk.apicov;
 
@@ -42,6 +42,7 @@ final class ClassPathIndex implements AutoCloseable {
     static final class MemberInfo {
         final int access;
         final Object value;   // a field's ConstantValue, or null
+        BodyClass body;       // a method's, from its code (BodyClass); null for a field
 
         MemberInfo(int access, Object value) {
             this.access = access;
@@ -190,10 +191,12 @@ final class ClassPathIndex implements AutoCloseable {
             @Override
             public MethodVisitor visitMethod(int access, String name, String desc, String signature,
                                              String[] exceptions) {
-                ci.methods.put(name + desc, new MemberInfo(access, null));
-                return null;
+                MemberInfo mi = new MemberInfo(access, null);
+                ci.methods.put(name + desc, mi);
+                mi.body = BodyClass.of(access);
+                return mi.body != null ? null : BodyClass.reader(name, b -> mi.body = b);
             }
-        }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
         return ci;
     }
 

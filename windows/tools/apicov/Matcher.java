@@ -90,19 +90,23 @@ final class Matcher {
         return m.isMethod() ? matchMethod(k, ci, m) : matchField(ci, m);
     }
 
-    private record Found(ClassPathIndex.ClassInfo owner, ClassPathIndex.MemberInfo member) {}
+    // A member and the class that declares it.
+    record Found(ClassPathIndex.ClassInfo owner, ClassPathIndex.MemberInfo member) {}
 
-    private Result matchMethod(ApiModel.ApiClass k, ClassPathIndex.ClassInfo ci, ApiModel.ApiMember m) {
-        Found f;
+    // The method or constructor an app's call to m links to, or null.
+    Found resolveMethod(ApiModel.ApiClass k, ApiModel.ApiMember m) {
+        ClassPathIndex.ClassInfo ci = index.get(k.name);
+        if (ci == null) return null;
         if (m.kind == ApiModel.MemberKind.CTOR) {
             ClassPathIndex.MemberInfo mi = ci.methods.get("<init>" + m.desc);
-            f = mi == null ? null : new Found(ci, mi);
-        } else {
-            f = findInClasses(ci, m.name + m.desc);
-            if (f == null) {
-                f = findInInterfaces(ci, m.name + m.desc);
-            }
+            return mi == null ? null : new Found(ci, mi);
         }
+        Found f = findInClasses(ci, m.name + m.desc);
+        return f != null ? f : findInInterfaces(ci, m.name + m.desc);
+    }
+
+    private Result matchMethod(ApiModel.ApiClass k, ClassPathIndex.ClassInfo ci, ApiModel.ApiMember m) {
+        Found f = resolveMethod(k, m);
         if (f == null) {
             String other = otherReturn(ci, m);
             return other != null ? new Result(State.WRONG_RETURN, "returns " + other + " here")

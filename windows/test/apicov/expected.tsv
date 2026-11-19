@@ -53,3 +53,26 @@ fx.Outer.Inner	<init>	ok
 fx.Outer.Inner	get	ok
 fx.Outer.Nested		ok
 fx.Outer.Nested	<init>	ok
+fb.Absy		ok
+fb.Absy	<init>	ok
+fb.Absy	concreteEmpty	ok
+fb.Absy	hook	ok
+fb.Body		ok
+fb.Body	<init>	ok
+fb.Body	emptyBoth	ok
+fb.Body	emptyStub	ok
+fb.Body	inheritedReal	ok
+fb.Body	natImpl	ok
+fb.Body	natStub	ok
+fb.Body	natUnbound	ok
+fb.Body	notInAosp	ok
+fb.Body	nullBoth	ok
+fb.Body	realHere	ok
+fb.Body	stubInt	ok
+fb.Body	throwsBoth	ok
+fb.Body	throwsStub	ok
+fb.Cb		ok
+fb.Cb	onDefault	ok
+fb.Cb	onThing	ok
+fb.Ctor		ok
+fb.Ctor	<init>	ok

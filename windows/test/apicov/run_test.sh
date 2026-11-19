@@ -22,10 +22,12 @@ SEP=":"
 command -v cygpath > /dev/null 2>&1 && SEP=";"
 ASM="--add-exports java.base/jdk.internal.org.objectweb.asm=ALL-UNNAMED"
 
-rm -rf "$WORK/tool" "$WORK/fixture"
-mkdir -p "$WORK/tool" "$WORK/fixture"
+rm -rf "$WORK/tool" "$WORK/fixture" "$WORK/aosp"
+mkdir -p "$WORK/tool" "$WORK/fixture" "$WORK/aosp"
 # shellcheck disable=SC2086
 "$JAVAC" $ASM -Xlint:all -Werror -d "$(win "$WORK/tool")" "$(win "$TOOL")"/*.java "$(win "$HERE/ApiCovTest.java")"
-"$JAVAC" -d "$(win "$WORK/fixture")" "$(win "$HERE/src/fx")"/*.java
+"$JAVAC" -d "$(win "$WORK/fixture")" "$(win "$HERE/src/fx")"/*.java "$(win "$HERE/src/fb")"/*.java
+"$JAVAC" -d "$(win "$WORK/aosp")" "$(win "$HERE/aosp/fb")"/*.java
 # shellcheck disable=SC2086
-"$JAVA" $ASM -cp "$(win "$WORK/tool")" com.winapk.apicov.ApiCovTest "$(win "$HERE")" "$(win "$WORK/fixture")"
+"$JAVA" $ASM -cp "$(win "$WORK/tool")" com.winapk.apicov.ApiCovTest \
+    "$(win "$HERE")" "$(win "$WORK/fixture")" "$(win "$WORK/aosp")"

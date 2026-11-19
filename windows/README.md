@@ -104,6 +104,7 @@ windows/scripts/bake_jre.sh "$JAVA_HOME" runtime/lib runtime/jre
 runtime/bin/winapk-runtime.exe --apk app.apk [--jdk "$JAVA_HOME"] [--data <dir>] [--install-only]
 runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--data <dir>] --gms <command> [args]
 runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--data <dir>] --verify-apk <file>
+runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--lib <dir>] --list-natives <file>
 ```
 
 - `--apk` takes a plain APK or a split bundle (`.apkm`, `.xapk`, `.apks`).
@@ -119,6 +120,10 @@ runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--data <dir>] --verify-apk 
   and minSdkVersion, whether its signature verifies and whether Google signed
   it, as `KEY<tab>value` lines; exit 0 Google-signed, 4 another signer, 3 does
   not verify, 1 not an app. The Google services setup installs a file only on 0.
+- `--list-natives` binds the host natives as for an app, with no app and no
+  class-data sharing (it leaves the data folder alone), and writes one line
+  per native method of the host classes: `<class> <name> <signature>
+  implemented|stub`. The API coverage report reads it.
 
 `Win.apk.exe` has the user-facing command line (`<file>`, `--run`) and the
 helper verbs `install`, `uninstall`, `runtime-permission`, `special-access` and
@@ -199,7 +204,7 @@ Every test is a program built by CMake; `win-ci.yml` runs each on
 | `winapk-gl-test` | ANGLE makes a context and the read-back frame has the right colors |
 | `winapk-binder-test` | `host/binder_win.cpp` between three real JVMs (`BinderTransportTest.java`: transact, oneway order, binder identity, fds, death notification, the broker's caller checks, the Google account mirror); and java.io's opens (`FileShareDeleteTest.java`) |
 | `test/java/*Test.java` | Framework pieces against the built jars: file separators, renames, Android paths, damage rectangles, camera2 stills, host network, touch, permissions, APK signatures, App Links, scan records |
-| `test/apicov/run_test.sh` | The API coverage tool against a fixture (plain Java: CI runs it on Ubuntu): one planted class or member per state, the signature format's hard cases (annotations with arguments, generics and their erasure, varargs, nested and inner classes, `java.lang` short names) and its constants |
+| `test/apicov/run_test.sh` | The API coverage tool against a fixture (plain Java: CI runs it on Ubuntu): one planted class or member per state, the signature format's hard cases (annotations with arguments, generics and their erasure, varargs, nested and inner classes, `java.lang` short names) and its constants; then the bodies, against an AOSP copy and a natives listing: one planted method per verdict |
 | CI steps | The staged runtime boots an F-Droid APK headless and in a window (with a resize), class-data sharing maps on the second start, a service host is replaced by the user's start, `--gms selftest`/`status`, `--verify-apk` |
 
 The guest libraries are built with plain clang + lld (`test/build_guest.sh`,
@@ -236,20 +241,20 @@ configuration.
 ## API coverage
 
 How much of Android's public API (API 36) a staged runtime has, checked the way
-the JVM links an app against it:
+the JVM links an app against it, and how much of that does work:
 
 ```sh
 windows/scripts/api_coverage.sh --runtime <staged runtime> --out <report dir> \
-    [--jre <java home>] [--label <name>] [--self-check]
+    [--jre <java home>] [--natives <file>] [--label <name>] [--self-check]
 ```
 
 `fetch_android_api.sh` downloads the reference into `thirdparty/android-api/`
 (not in git), pinned and checked against its SHA-256: AOSP's merged public API
 list (`prebuilts/sdk`, `36/public/api/android.txt`, Mainline modules included)
-and, for `--self-check`, Robolectric's build of the AOSP framework
-(`org.robolectric:android-all`, about 200 MB). The tool, `tools/apicov/`, reads
-the list (metalava's signature format), indexes the classes the runtime puts on
-the JVM (the JRE's modules with the `java.base` and `jdk.unsupported` patches,
+and Robolectric's build of the AOSP framework (`org.robolectric:android-all`,
+about 200 MB). The tool, `tools/apicov/`, reads the list (metalava's signature
+format), indexes the classes the runtime puts on the JVM (the JRE's modules
+with the `java.base` and `jdk.unsupported` patches,
 then `android-framework.jar`, `macapk-loader.jar` and bcprov) and gives every
 class and member one state: `ok`, `missing-class`, `missing-member`,
 `wrong-kind`, `wrong-return`, `wrong-type`, `wrong-static`, `wrong-access`,
@@ -258,8 +263,19 @@ writes `report.md` (the figures, Android and JDK packages apart, and the
 packages with the most gaps), `report.json` (the same numbers, identical from
 run to run) and `gaps.tsv` (every gap, one per line).
 
-It measures whether an app that uses an API links, not whether the code
-behind it does what Android does, nor what share of apps run.
+Each Android method and constructor that links is then judged by its code:
+`implemented` (real code here), `same-as-aosp` (empty, a default or a throw,
+as AOSP's own is), `stub` (trivial here where AOSP's does work, or a native
+bound to a stub or not bound at all), `abstract` (abstract in the API: in AOSP
+a hidden class the system hands out does the work, which is not judged) or
+`unknown`. Natives are judged by how the runtime binds them:
+`bin/winapk-runtime.exe --list-natives`, which the script runs when the runtime
+has it, or a listing given with `--natives`. `report.md` gives the share that
+works and the packages with the most stubs, `stubs.tsv` every stub. Calls are
+not followed, so a real body that only calls a stub counts as implemented.
+
+It measures whether an app that uses an API links and reaches code, not
+whether that code does what Android does, nor what share of apps run.
 `--self-check` matches the same list against the real AOSP framework, which
 should come out complete. Without a `jre/` in the runtime (a plain
 `build_java.sh` output), `--jre` names the Java home whose modules stand in for
