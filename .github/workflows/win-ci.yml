@@ -226,6 +226,8 @@ jobs:
         run: ./build/winapk-jni-variadic-test.exe
       - name: Run the x18 scan test
         run: ./build/winapk-x18-scan-test.exe
+      - name: Run the x18 rewrite test
+        run: ./build/winapk-x18-rewrite-test.exe
       - name: Run the arm64 test
         run: ./build/winapk-arm64-test.exe guest/arm64
       - name: Run the guest linker test

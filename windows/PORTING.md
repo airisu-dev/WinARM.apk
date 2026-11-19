@@ -71,7 +71,15 @@ binding (`jni_bind`). New code must not call guest functions around them.
 D6. **Refuse what cannot run, and say why**: an x86_64 or armeabi-v7a
 library, or one that writes x18, fails at load with a message the user sees
 (the launcher's install and start errors, the run log). `WINAPK_ARM64_ALLOW_X18=1`
-loads it anyway, for investigation.
+loads it anyway, for investigation. `WINAPK_ARM64_X18_REWRITE=1` (a prototype, off by
+default) loads a library that writes x18 by giving it a virtual x18: each instruction
+that names x18 jumps to a thunk in a pool after the image that runs it on a borrowed
+register, taken from and put back in a per-thread TEB slot (`arm64_x18_rewrite.h`). x18
+is never changed. The rewrite is all or nothing and patches only words that are code:
+inside `.eh_frame` functions, not read as a literal, and reachable (a function with an
+indirect `br` takes every block start as reachable). A data word right after an
+unconditional branch in such a function is told from code only by its block being
+plausible code. What cannot be done is refused with the reason.
 
 ## 4. Technical findings
 
@@ -152,7 +160,8 @@ forbids are escaped.
 
 - The thunk pool is mapped read-write-execute and has no unwind information.
 - Apps that ship only `x86_64` or only `armeabi-v7a` code do not run; neither
-  do libraries that write x18.
+  do libraries that write x18, unless `WINAPK_ARM64_X18_REWRITE=1` can rewrite them
+  (four to six extra instructions and two TEB accesses per x18 instruction).
 - Some shim answers still describe an x86_64 device (system properties such
   as `ro.product.cpu.abi`, `uname`'s machine); arm64 apps get arm64 layouts
   through `arm64_abi.cpp`, but these values are to be checked.
