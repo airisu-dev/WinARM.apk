@@ -8,6 +8,7 @@
 - **`Win.apk-Setup-arm64.exe`**, the installer (per user, no administrator rights), or **`Win.apk-windows-arm64.zip`**, portable: unzip it and run `Win.apk.exe`.
 
 ## What's new
+- **More games run.** Libraries that use the x18 register, which Windows keeps for itself, are adapted when they load. Klooni now starts and plays.
 - **The Remove button removes the app.** In the Remove dialog it only ticked and unticked "Also remove accounts and data". Tab now reaches every control in Win.apk's dialogs.
 - **Two apps with the same file name stay two apps.** A second `app-release.apk` from another project no longer replaces the first.
 - **An older version asks first.** Opening an older file of an installed app asks before replacing it, and **Keep installed version** is the default.
@@ -24,7 +25,7 @@
 
 ## Known limitations
 - Apps with only `x86_64` or only 32-bit ARM (`armeabi-v7a`) code do not run.
-- A library that uses the x18 register is refused (two libGDX games of 92 tested apps).
+- A library whose use of the x18 register cannot be adapted is refused, as in some Unity and libGDX apps.
 - No in-app purchases, Play Integrity or Vulkan; OpenSL ES sound is missing; sensors report a phone lying still.
 - A minimized app is paused, as a phone app sent to the home screen is; an app that quits when paused (glmark2) ends its run.
 - The dim behind some dialogs is darker than on Android ([#10](https://github.com/airisu-dev/WinARM.apk/issues/10)).

@@ -733,7 +733,8 @@ void ElfImage::seal_relro() {
     VirtualProtect(at<uint8_t>(start), end - start, PAGE_READONLY, &old);
 }
 
-// x18 is the TEB on Windows on Arm (arm64_x18.h). WINAPK_ARM64_ALLOW_X18=1 loads such a library anyway.
+// x18 is the TEB on Windows on Arm (arm64_x18.h), so a library that writes it is rewritten to a virtual x18.
+// WINAPK_ARM64_X18_REWRITE=0 refuses it instead; WINAPK_ARM64_ALLOW_X18=1 loads it unchanged.
 bool ElfImage::check_x18(const std::vector<uint8_t>& file, std::string* error) {
     const arm64::ElfX18Scan e = arm64::scan_elf_x18(file.data(), file.size());
     // Reading x18 and restoring a saved context (libunwind's, a longjmp) leave the TEB where it is.
@@ -745,12 +746,13 @@ bool ElfImage::check_x18(const std::vector<uint8_t>& file, std::string* error) {
         std::fprintf(stderr, "[win.apk] %s: %s; loaded anyway (WINAPK_ARM64_ALLOW_X18)\n", path_.u8string().c_str(), text);
         return true;
     }
-    char on[4] = {};
-    if (GetEnvironmentVariableA("WINAPK_ARM64_X18_REWRITE", on, sizeof on) > 0 && on[0] == '1' && on[1] == 0) {
-        return rewrite_x18(file, text, error);
+    char rewrite[4] = {};
+    if (GetEnvironmentVariableA("WINAPK_ARM64_X18_REWRITE", rewrite, sizeof rewrite) == 1 && rewrite[0] == '0') {
+        *error = std::string(text) +
+                 "; Windows on Arm keeps the thread's TEB in x18, so this library cannot run natively";
+        return false;
     }
-    *error = std::string(text) + "; Windows on Arm keeps the thread's TEB in x18, so this library cannot run natively";
-    return false;
+    return rewrite_x18(file, text, error);
 }
 
 namespace {
@@ -794,7 +796,7 @@ bool x18_slots(arm64::X18Slots* out, std::string* error) {
 // Rewrites every instruction that names x18 into a branch to a thunk (arm64_x18_rewrite.h). The whole change is
 // planned and checked first; nothing is written to the image unless every word can be done.
 bool ElfImage::rewrite_x18(const std::vector<uint8_t>& file, const std::string& why, std::string* error) {
-    const std::string head = why + "; WINAPK_ARM64_X18_REWRITE: ";
+    const std::string head = why + "; it cannot be rewritten: ";
     if (options_.reserved_address) {
         *error = head + "a library in a range the caller reserved cannot be rewritten";
         return false;
