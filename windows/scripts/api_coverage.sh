@@ -44,6 +44,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$runtime" && -n "$out" ]] || { echo "api_coverage.sh: --runtime and --out are required" >&2; exit 2; }
+# Absolute: winapk-runtime cannot load the JVM from a relative --jdk (jvm.dll's dependencies resolve from its
+# own directory, which it must name in full).
+runtime="$(cd -- "$runtime" && pwd)"
+[[ -n "$jre" ]] && jre="$(cd -- "$jre" && pwd)"
 
 JAVAC=javac
 JAVA=java
