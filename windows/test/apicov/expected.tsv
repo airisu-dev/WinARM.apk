@@ -1,0 +1,78 @@
+# <class> <tab> <member name, empty for the class itself> <tab> <state>
+fx.Abs		ok
+fx.Abs	<init>	ok
+fx.Abs	conc	wrong-abstract
+fx.Base		ok
+fx.Base	<init>	ok
+fx.Base	inherited	ok
+fx.Color		ok
+fx.Color	RED	ok
+fx.FinalCls		ok
+fx.FinalCls	<init>	ok
+fx.Hier		wrong-hierarchy
+fx.Hier	<init>	ok
+fx.Iface		ok
+fx.Iface	dflt	ok
+fx.Iface	sm	ok
+fx.Iface	IC	ok
+fx.Kind		wrong-kind
+fx.Kind	<init>	missing-member
+fx.Mark		ok
+fx.Mark	value	ok
+fx.Missing		missing-class
+fx.Missing	<init>	missing-class
+fx.Missing	any	missing-class
+fx.NotFinal		wrong-final
+fx.NotFinal	<init>	ok
+fx.Ok		ok
+fx.Ok	<init>	ok
+fx.Ok	ann	ok
+fx.Ok	bound	ok
+fx.Ok	fin	wrong-final
+fx.Ok	gone	missing-member
+fx.Ok	many	ok
+fx.Ok	pairs	ok
+fx.Ok	name	ok
+fx.Ok	plain	ok
+fx.Ok	ret	wrong-return
+fx.Ok	stat	wrong-static
+fx.Ok	vis	wrong-access
+fx.Ok	wild	ok
+fx.Ok	CH	ok
+fx.Ok	CONST	ok
+fx.Ok	K	wrong-constant
+fx.Ok	L	ok
+fx.Ok	NAN	ok
+fx.Ok	S	ok
+fx.Ok	count	ok
+fx.Ok	typed	wrong-type
+fx.Outer		ok
+fx.Outer	<init>	ok
+fx.Outer.Inner		ok
+fx.Outer.Inner	<init>	ok
+fx.Outer.Inner	get	ok
+fx.Outer.Nested		ok
+fx.Outer.Nested	<init>	ok
+fb.Absy		ok
+fb.Absy	<init>	ok
+fb.Absy	concreteEmpty	ok
+fb.Absy	hook	ok
+fb.Body		ok
+fb.Body	<init>	ok
+fb.Body	emptyBoth	ok
+fb.Body	emptyStub	ok
+fb.Body	inheritedReal	ok
+fb.Body	natImpl	ok
+fb.Body	natStub	ok
+fb.Body	natUnbound	ok
+fb.Body	notInAosp	ok
+fb.Body	nullBoth	ok
+fb.Body	realHere	ok
+fb.Body	stubInt	ok
+fb.Body	throwsBoth	ok
+fb.Body	throwsStub	ok
+fb.Cb		ok
+fb.Cb	onDefault	ok
+fb.Cb	onThing	ok
+fb.Ctor		ok
+fb.Ctor	<init>	ok

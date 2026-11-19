@@ -47,3 +47,4 @@ stage/
 .ccache/
 thirdparty/angle-win/
 thirdparty/webview2-sdk/
+thirdparty/android-api/
