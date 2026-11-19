@@ -850,11 +850,10 @@ bool ElfImage::rewrite_x18(const std::vector<uint8_t>& file, const std::string& 
         }
         const uint64_t thunk = pool_vaddr + words.size() * sizeof(uint32_t);
         uint32_t jump;
-        if (!arm64::make_x18_thunk(site.word, site.vaddr, thunk, slots, &words, &detail) ||
-            !arm64::x18_thunk::branch(site.vaddr, thunk, &jump)) {
+        if (!arm64::make_x18_thunk(site.word, site.vaddr, thunk, slots, site.borrow, &words, &jump, &detail)) {
             char at[64];
             std::snprintf(at, sizeof at, " at file offset 0x%llx", static_cast<unsigned long long>(site.offset));
-            *error = head + (detail.empty() ? "a thunk is out of branch range" : detail) + at;
+            *error = head + detail + at;
             return false;
         }
         patches.push_back({site.vaddr, jump});

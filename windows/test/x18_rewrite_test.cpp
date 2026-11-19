@@ -37,6 +37,9 @@ constexpr auto kRw = X18Operands::Rewritable;
 constexpr auto kCb = X18Operands::CompareBranch;
 constexpr auto kNo = X18Operands::None;
 constexpr auto kUn = X18Operands::Unsupported;
+constexpr auto kIb = X18Operands::IndirectBranch;
+constexpr auto kIc = X18Operands::IndirectCall;
+constexpr auto kPc = X18Operands::PcRelAddress;
 constexpr uint8_t D = X18Operands::Rd, N = X18Operands::Rn, M = X18Operands::Rm, A = X18Operands::Ra;
 
 const Decode kDecode[] = {
@@ -62,11 +65,20 @@ const Decode kDecode[] = {
     {0xb4000072, kCb, D, true, false, "cbz x18, #12"},
     {0x36180072, kCb, D, true, false, "tbz w18, #3, #12"},
     {0x91000400, kNo, 0, false, false, "add x0, x0, #1"},
+    {0xd61f0240, kIb, N, true, false, "br x18"},
+    {0xd65f0240, kIb, N, true, false, "ret x18"},
+    {0xd63f0240, kIc, N, true, false, "blr x18"},
+    {0x10000812, kPc, D, false, true, "adr x18, #256"},
+    {0x10fffe12, kPc, D, false, true, "adr x18, #-64"},
+    {0xb0000012, kPc, D, false, true, "adrp x18, #4096"},
+    {0xd0fffff2, kPc, D, false, true, "adrp x18, #-8192"},
+    {0xd61f0200, kNo, 0, false, false, "br x16"},
 };
 
 // ---- running a thunk ---------------------------------------------------------------------------------------
 
-// r[0..17] = x0..x17, r[19..28] = x19..x28, r[29] = nzcv. In, then out.
+// r[0..17] = x0..x17, r[19..28] = x19..x28, r[29] = nzcv. In, then out. x28 holds the return address while the
+// code runs and its input value after.
 extern "C" __attribute__((naked)) void run_regs(void* fn, uint64_t* r) {
     __asm__ volatile(
         "sub sp, sp, #112\n"
@@ -94,7 +106,10 @@ extern "C" __attribute__((naked)) void run_regs(void* fn, uint64_t* r) {
         "ldp x23, x24, [x29, #184]\n"
         "ldp x25, x26, [x29, #200]\n"
         "ldp x27, x28, [x29, #216]\n"
+        "adr x28, 2f\n"
         "blr x30\n"
+        "2:\n"
+        "ldr x28, [x29, #224]\n"
         "stp x0, x1, [x29, #0]\n"
         "stp x2, x3, [x29, #16]\n"
         "stp x4, x5, [x29, #32]\n"
@@ -122,6 +137,10 @@ extern "C" __attribute__((naked)) void run_regs(void* fn, uint64_t* r) {
 }
 
 constexpr uint64_t kBuf = 0xb0f0000000000000ull;  // kBuf + n: the address of byte n of the memory block
+// kCode + n: n bytes from the start of the code block, which may be negative (the bias keeps the marker intact).
+constexpr uint64_t kCodeBias = 0x10000000;
+constexpr uint64_t kCode = 0xc0de000000000000ull + kCodeBias;
+constexpr size_t kCodeSize = 0x4000, kSiteAt = 0x400, kBranchTarget = 0x200, kCallee = 0x240, kThunkAt = 0x2100;
 constexpr uint32_t kN = 0x80000000, kZ = 0x40000000, kC = 0x20000000;
 
 struct Reg {
@@ -140,6 +159,7 @@ struct Run {
     uint32_t flags_out;
     bool check_mem;
     uint64_t mem_out[4];
+    uint8_t borrow = 16;  // the register an indirect branch or call clobbers
 };
 
 constexpr uint64_t kMem0[4] = {0x0000222200001111ull, 0x3333, 0x4444, 0x5555};
@@ -149,7 +169,11 @@ uint32_t g_voff = 0, g_soff = 0;
 uint8_t* g_code = nullptr;
 
 uint64_t resolve(uint64_t v, const uint64_t* mem) {
-    return (v & 0xffff000000000000ull) == kBuf ? reinterpret_cast<uint64_t>(mem) + (v & 0xffff) : v;
+    if ((v & 0xffff000000000000ull) == kBuf) return reinterpret_cast<uint64_t>(mem) + (v & 0xffff);
+    if ((v & 0xffff000000000000ull) == 0xc0de000000000000ull) {
+        return reinterpret_cast<uint64_t>(g_code) + (v & 0xffffffffffffull) - kCodeBias;
+    }
+    return v;
 }
 
 void run_case(const Run& c) {
@@ -158,19 +182,24 @@ void run_case(const Run& c) {
     X18Slots slots{g_voff, g_soff};
     std::vector<uint32_t> thunk;
     std::string why;
-    const uint64_t site = reinterpret_cast<uint64_t>(g_code), at = site + 0x100;
-    if (!make_x18_thunk(c.word, site, at, slots, &thunk, &why)) {
+    const uint64_t base = reinterpret_cast<uint64_t>(g_code);
+    const uint64_t site = base + kSiteAt, at = base + kThunkAt;
+    uint32_t jump = 0;
+    if (!make_x18_thunk(c.word, site, at, slots, c.borrow, &thunk, &jump, &why)) {
         check(false, name, why.c_str());
         return;
     }
     check(thunk.size() <= kX18ThunkMaxWords, name, "thunk size");
-    uint32_t jump;
-    check(x18_thunk::branch(site, at, &jump), name, "branch to thunk");
-    const uint32_t site_code[] = {jump, 0xd280002f /* movz x15, #1 */, 0xd65f03c0 /* ret */,
-                                  0xd280004f /* movz x15, #2 */, 0xd65f03c0};
-    std::memcpy(g_code, site_code, sizeof site_code);
-    std::memcpy(g_code + 0x100, thunk.data(), thunk.size() * 4);
-    FlushInstructionCache(GetCurrentProcess(), g_code, 0x200);
+    // Thunks return through x28, not x30: blr x18 has overwritten x30.
+    const uint32_t site_code[] = {jump, 0xd280002f /* movz x15, #1 */, 0xd61f0380 /* br x28 */,
+                                  0xd280004f /* movz x15, #2 */, 0xd61f0380};
+    const uint32_t branch_target[] = {0xd280006f /* movz x15, #3 */, 0xd61f0380 /* br x28 */};
+    const uint32_t callee[] = {0xaa1e03ed /* mov x13, x30 */, 0xd28000ee /* movz x14, #7 */, 0xd65f03c0 /* ret */};
+    std::memcpy(g_code + kSiteAt, site_code, sizeof site_code);
+    std::memcpy(g_code + kBranchTarget, branch_target, sizeof branch_target);
+    std::memcpy(g_code + kCallee, callee, sizeof callee);
+    std::memcpy(g_code + kThunkAt, thunk.data(), thunk.size() * 4);
+    FlushInstructionCache(GetCurrentProcess(), g_code, kCodeSize);
 
     uint64_t mem[4];
     std::memcpy(mem, kMem0, sizeof mem);
@@ -186,7 +215,7 @@ void run_case(const Run& c) {
     TlsSetValue(g_s, reinterpret_cast<void*>(0x5eed5eed5eed5eedull));
 
     const uint64_t teb = reinterpret_cast<uint64_t>(NtCurrentTeb());
-    run_regs(g_code, r);
+    run_regs(g_code + kSiteAt, r);
 
     uint64_t expect[30];
     std::memcpy(expect, before, sizeof expect);
@@ -216,7 +245,7 @@ void run_case(const Run& c) {
     }
 }
 
-// x15 is the marker for which way a compare-and-branch went: 1 falls through, 2 is taken.
+// x15 is the marker for which way a compare-and-branch went: 1 falls through, 2 is taken, 3 is the target of br x18.
 std::vector<Run> cases() {
     const uint64_t* m = kMem0;
     (void)m;
@@ -281,6 +310,24 @@ std::vector<Run> cases() {
     add({"tbz w18, #3, #12 (set)", 0x36180072, 8, {}, 0, 8, {}, any, false, {}});
     add({"extr x0, x1, x18, #5", 0x93d21420, 0x20, {{1, 1}}, 0, 0x20, {{0, 0x0800000000000001ull}}, any, false, {}});
     add({"rbit x0, x18", 0xdac00240, 1, {}, 0, 1, {{0, 0x8000000000000000ull}}, any, false, {}});
+    // br, blr and ret through x18: the target is the virtual x18; the borrowed register ends up holding it.
+    add({"br x18", 0xd61f0240, kCode + kBranchTarget, {}, 0, kCode + kBranchTarget,
+         {{15, 3}, {16, kCode + kBranchTarget}}, any, false, {}});
+    add({"br x18 (through x17)", 0xd61f0240, kCode + kBranchTarget, {}, 0, kCode + kBranchTarget,
+         {{15, 3}, {17, kCode + kBranchTarget}}, any, false, {}, 17});
+    add({"br x18 (through the link register)", 0xd61f0240, kCode + kBranchTarget, {}, 0, kCode + kBranchTarget,
+         {{15, 3}}, any, false, {}, 30});
+    add({"ret x18", 0xd65f0240, kCode + kBranchTarget, {}, 0, kCode + kBranchTarget,
+         {{15, 3}, {16, kCode + kBranchTarget}}, any, false, {}});
+    add({"blr x18", 0xd63f0240, kCode + kCallee, {}, 0, kCode + kCallee,
+         {{13, kCode + kSiteAt + 4}, {14, 7}, {16, kCode + kCallee}}, any, false, {}});
+    // adr and adrp: the thunk is on another page than the site.
+    add({"adr x18, #256", 0x10000812, 0x1234, {}, 0, kCode + kSiteAt + 256, {}, any, false, {}});
+    add({"adr x18, #-64", 0x10fffe12, 0x1234, {}, 0, kCode + kSiteAt - 64, {}, any, false, {}});
+    add({"adr x18, #1048572", 0x107ffff2, 0x1234, {}, 0, kCode + kSiteAt + 1048572, {}, any, false, {}});
+    add({"adrp x18, #4096", 0xb0000012, 0x1234, {}, 0, kCode + 0x1000, {}, any, false, {}});
+    add({"adrp x18, #1073741824", 0x90200012, 0x1234, {}, 0, kCode + 0x40000000, {}, any, false, {}});
+    add({"adrp x18, #-8192", 0xd0fffff2, 0x1234, {}, 0, kCode - 0x2000, {}, any, false, {}});
     return v;
 }
 
@@ -391,6 +438,62 @@ void test_plan() {
         X18Plan p = plan_x18_sites(f.data(), f.size());
         check(p.ok && p.outside_functions == 1 && p.risky(), "plan: x18 outside the unwind tables");
     }
+    // The register an indirect branch through x18 clobbers: one that nothing can still read where the branch may land.
+    {
+        constexpr uint32_t kBrX18 = 0xd61f0240, kReadX16 = 0xaa1003e0 /* mov x0, x16 */,
+                           kWriteX16 = 0xaa0003f0 /* mov x16, x0 */, kB8 = 0x14000002, kBl8 = 0x94000002;
+        auto site_borrow = [&](const std::vector<uint32_t>& text, const std::vector<std::pair<uint32_t, uint32_t>>& fns,
+                               size_t index) {
+            auto f = make_elf(text, fns);
+            const X18Plan p = plan_x18_sites(f.data(), f.size());
+            for (const X18Site& s : p.sites) {
+                if (s.vaddr == 0x1000 + index * 4) return int(s.borrow);
+            }
+            return -1;
+        };
+        check(site_borrow({kNop, kBrX18, kRet}, {{0, 3}}, 1) == 16, "borrow: x16 when nothing uses it");
+        check(site_borrow({kReadX16, kBrX18, kRet}, {{0, 3}}, 1) == 17, "borrow: x17 when x16 is read at the entry");
+        check(site_borrow({kWriteX16, kBrX18, kRet}, {{0, 3}}, 1) == 16,
+              "borrow: x16 when it is written before it is read");
+        // After the branch, a block that reads x16 first (a case of a switch).
+        check(site_borrow({kBrX18, kRet, kReadX16, kRet}, {{0, 4}}, 0) == 17, "borrow: x16 read in a later block");
+        check(site_borrow({kBrX18, kRet, kWriteX16, kReadX16, kRet}, {{0, 5}}, 0) == 16,
+              "borrow: x16 written first in the later block");
+        check(site_borrow({kBrX18, kRet, kBl8, kRet}, {{0, 4}}, 0) == 16, "borrow: a call clobbers x16");
+        check(site_borrow({kBrX18, kRet, kBl8, kReadX16, kRet}, {{0, 5}}, 0) == 17,
+              "borrow: the word after a call is a landing point (a case label after a noreturn call)");
+        std::vector<uint32_t> all = {kBrX18, kRet};
+        for (uint32_t r = 9; r <= 17; ++r) all.push_back(0xaa0003e0 | r << 16);  // mov x0, xr
+        all.push_back(kRet);
+        check(site_borrow(all, {{0, uint32_t(all.size())}}, 0) == 0xff, "borrow: none when x9..x17 are all read");
+        // A function joined to another by a direct branch shares what that one reads; a plain neighbour does not.
+        check(site_borrow({kNop, kBrX18, kReadX16, kRet}, {{0, 2}, {2, 2}}, 1) == 16, "borrow: separate functions");
+        check(site_borrow({kB8, kBrX18, kReadX16, kRet}, {{0, 2}, {2, 2}}, 1) == 17, "borrow: functions joined by b");
+        check(site_borrow({kBl8, kBrX18, kReadX16, kRet}, {{0, 2}, {2, 2}}, 1) == 16,
+              "borrow: a call does not join functions");
+        check(x18_pick_borrow(0) == 16 && x18_pick_borrow(1u << 16 | 1u << 17) == 15, "borrow: pick order");
+        // A table dispatch: an indexed load, an add of the base, other work, the branch.
+        constexpr uint32_t kLdrsw = 0xb8ab798b /* ldrsw x11, [x12, x11, lsl #2] */,
+                           kAdd = 0x8b0c0172 /* add x18, x11, x12 */, kLdp = 0xa8c17bfd /* ldp x29, x30, [sp], #16 */;
+        const uint32_t dispatch[] = {kLdrsw, kAdd, kNop, kBrX18};
+        check(x18_table_dispatch(dispatch, 3), "dispatch: load, add, br");
+        const uint32_t pointer[] = {0xf86b798b /* ldr x11, [x12, x11, lsl #3] */, kNop, 0xd61f0160 /* br x11 */};
+        check(!x18_table_dispatch(pointer, 2), "dispatch: a call through a loaded pointer is not one");
+        const uint32_t no_load[] = {kNop, kAdd, kBrX18};
+        check(!x18_table_dispatch(no_load, 2), "dispatch: an add without a table load");
+        // Every x0..x17 is read in the block after the switch, the link register is reloaded: x30 is the one left.
+        std::vector<uint32_t> sw = {kLdrsw, kAdd, kBrX18};
+        for (uint32_t r = 0; r <= 17; ++r) sw.push_back(0xf100001f | r << 5);  // cmp xr, #0
+        sw.push_back(kLdp);
+        sw.push_back(kRet);
+        check(site_borrow(sw, {{0, uint32_t(sw.size())}}, 2) == 30, "borrow: the link register in a non-leaf switch");
+        // The same, but the function returns without reloading it: a leaf, whose link register is live.
+        sw.pop_back();
+        sw.pop_back();
+        sw.push_back(kRet);
+        check(site_borrow(sw, {{0, uint32_t(sw.size())}}, 2) == 0xff,
+              "borrow: none in a leaf whose registers are read");
+    }
     // Files that cannot be planned: the ELF comes from an APK, so none of these may be read out of bounds.
     const auto good = make_elf({kNop, kX18Mov, kRet}, {{0, 3}});
     winapk::elf::Ehdr hdr;
@@ -449,16 +552,37 @@ int main() {
                   (d.kind == kNo || (o.reads == d.reads && o.writes == d.writes)),
               d.text, detail);
     }
-    // Forms the rewrite refuses: exclusives, br x18, ldr literal, adr, and a prefetch form that is undefined.
-    for (uint32_t w : {0xc85f7e40u /* ldxr x0, [x18] */, 0xd61f0240u /* br x18 */, 0x58000012u /* ldr x18, .+0 */,
-                       0x10000012u /* adr x18, .+0 */, 0xd63f0240u /* blr x18 */,
+    // Forms the rewrite refuses: exclusives, authenticated branches, ldr literal, an undefined prefetch form.
+    for (uint32_t w : {0xc85f7e40u /* ldxr x0, [x18] */, 0xd61f0a40u /* braaz x18 */, 0x58000012u /* ldr x18, .+0 */,
+                       0xd73f0a40u /* blraaz x18 */,
                        0xc8127c41u /* stxr w18, x1, [x2] */, 0xf88aea52u /* undefined: size 3, opc 2, op4 2 */}) {
         char t[32];
         std::snprintf(t, sizeof t, "unsupported %08x", w);
         check(x18_operands(w).kind == kUn, t);
         std::vector<uint32_t> out;
         std::string why;
-        check(!make_x18_thunk(w, 0x1000, 0x2000, {0x1490, 0x1498}, &out, &why) && out.empty(), t, "made a thunk");
+        uint32_t patch;
+        check(!make_x18_thunk(w, 0x1000, 0x2000, {0x1490, 0x1498}, 16, &out, &patch, &why) && out.empty(), t,
+              "made a thunk");
+    }
+    {  // Forms that cannot be thunked are refused, with nothing appended.
+        std::vector<uint32_t> out;
+        std::string why;
+        uint32_t patch;
+        check(!make_x18_thunk(0xd61f0240, 0x1000, 0x2000, {0x1490, 0x1498}, 0xff, &out, &patch, &why) && out.empty(),
+              "br x18 with no free register");
+        const uint64_t distant = 0x1000 + (uint64_t{1} << 28);
+        check(!make_x18_thunk(0xd63f0240, 0x1000, distant, {0x1490, 0x1498}, 16, &out, &patch, &why) && out.empty(),
+              "blr x18 with the thunk out of branch range");
+        // adrp x18, #-4 GB from a thunk 100 MB above the site: the page does not fit the thunk's adrp.
+        check(!make_x18_thunk(0x90800012, 0x1000, 0x1000 + 0x6400000, {0x1490, 0x1498}, 16, &out, &patch, &why) &&
+                  out.empty() && why.find("out of reach") != std::string::npos,
+              "adrp out of reach");
+        check(!make_x18_thunk(0xd63f0240, 0x1000, 0x2000, {0x1490, 0x1498}, 30, &out, &patch, &why) && out.empty(),
+              "blr x18 may not borrow the link register");
+        check(make_x18_thunk(0xd63f0240, 0x1000, 0x2000, {0x1490, 0x1498}, 16, &out, &patch, &why) &&
+                  patch == 0x94000400 && out.size() == 2,
+              "blr x18 patches the site with bl", "");
     }
 
     // Every word that names x18 as a general register is found by uses_x18 and the other way round; each form this
@@ -475,12 +599,14 @@ int main() {
         const X18Operands o = x18_operands(w);
         const bool uses = uses_x18(w);
         if ((o.kind == kNo) == uses) ++mismatch;
-        if (o.kind == kRw || o.kind == kCb) {
+        if (o.kind != kNo && o.kind != kUn) {
             ++rewritable;
             std::vector<uint32_t> out;
             std::string why;
-            if (!make_x18_thunk(w, 0x10000000, 0x10100000, {0x1490, 0x1498}, &out, &why)) {
-                ++refused;
+            uint32_t patch;
+            if (!make_x18_thunk(w, 0x10000000, 0x10100000, {0x1490, 0x1498}, 16, &out, &patch, &why)) {
+                // An adrp whose target is 4 GB from the thunk is out of reach by design.
+                if (o.kind != kPc || why.find("out of reach") == std::string::npos) ++refused;
                 continue;
             }
             for (uint32_t t : out) {
@@ -498,7 +624,7 @@ int main() {
     check(refused == 0, "every accepted random word gets a thunk");
     check(left == 0, "thunks of random rewritable words");
 
-    g_code = static_cast<uint8_t*>(VirtualAlloc(nullptr, 0x1000, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
+    g_code = static_cast<uint8_t*>(VirtualAlloc(nullptr, kCodeSize, MEM_RESERVE | MEM_COMMIT, PAGE_EXECUTE_READWRITE));
     check(g_code != nullptr, "executable memory");
     if (g_code) {
         const auto all = cases();
@@ -509,9 +635,6 @@ int main() {
         std::atomic<int> bad{0};
         std::vector<std::thread> th;
         // The code page is shared, so each thread has a copy of the site and thunk of `add x18, x18, #1`.
-        std::vector<uint32_t> thunk;
-        std::string why;
-        make_x18_thunk(0x91000652, 0, 0x100, {g_voff, g_soff}, &thunk, &why);
         for (int t = 0; t < 16; ++t) {
             th.emplace_back([&, t] {
                 uint8_t* page = static_cast<uint8_t*>(
@@ -519,9 +642,11 @@ int main() {
                 std::vector<uint32_t> mine;
                 std::string w;
                 const uint64_t site_at = reinterpret_cast<uint64_t>(page), thunk_at = site_at + 0x100;
-                make_x18_thunk(0x91000652, site_at, thunk_at, {g_voff, g_soff}, &mine, &w);
-                uint32_t jump;
-                x18_thunk::branch(site_at, thunk_at, &jump);
+                uint32_t jump = 0;
+                if (!page || !make_x18_thunk(0x91000652, site_at, thunk_at, {g_voff, g_soff}, 16, &mine, &jump, &w)) {
+                    ++bad;
+                    return;
+                }
                 const uint32_t site[] = {jump, 0xd65f03c0};
                 std::memcpy(page, site, sizeof site);
                 std::memcpy(page + 0x100, mine.data(), mine.size() * 4);

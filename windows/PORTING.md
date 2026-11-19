@@ -79,6 +79,20 @@ or nothing and patches only words that are code: inside `.eh_frame` functions, n
 read as a literal, and reachable (a function with an indirect `br` takes every block
 start as reachable). A data word right after an unconditional branch in such a
 function is told from code only by its block being plausible code.
+`blr x18` becomes `bl thunk` (x16 may be clobbered by a call). After a `br x18` nothing
+can restore a borrowed register, so its thunk clobbers one that is dead wherever the
+branch may land: a register of x9..x17, then x8..x0, then the link register (the last
+only for a table dispatch, an indexed load then an add of the base, never for a tail
+call through a pointer). The planner reads each function with the functions joined to
+it by direct non-call branches (a hot/cold split, a tail call) and takes the block
+starts as the landing points; a register is dead at one if the straight-line code from
+it writes the register before reading it, or reaches a call; a word it does not fully
+decode, a return (x0, x1 and the link register), a tail call or a branch that is not a
+dispatch (the arguments and the link register) count as reads. No register left: the
+library is refused. A hand-written routine that passes a value in x9..x15 across a call
+is the one case this cannot see. `adr` and `adrp` into x18 are rebuilt with `adrp`+`add`
+from the thunk's address; the image and the pool are one page-aligned allocation, so
+the page distance is the same as in the file.
 `WINAPK_ARM64_X18_REWRITE=0` refuses such a library instead, and
 `WINAPK_ARM64_ALLOW_X18=1` loads it unchanged, for investigation.
 
