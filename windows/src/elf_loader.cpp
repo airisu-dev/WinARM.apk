@@ -5,6 +5,7 @@
 
 #include "winapk/arch.h"
 #include "winapk/arm64_x18.h"
+#include "winapk/arm64_x18_rewrite.h"
 #include "winapk/arm64_guest.h"
 #include "winapk/elf64_defs.h"
 #include "winapk/elf_tls.h"
@@ -14,6 +15,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <mutex>
 
 #include <windows.h>
 
@@ -191,8 +193,9 @@ std::unique_ptr<ElfImage> ElfImage::map(const std::filesystem::path& path, std::
         return nullptr;
     }
 
-    if (!img->map_segments(file, error)) return nullptr;
+    // Before the image is mapped: the thunks of an x18 rewrite are placed after it.
     if (!img->check_x18(file, error)) return nullptr;
+    if (!img->map_segments(file, error)) return nullptr;
     {
         // Raw Linux system calls become traps the runtime answers (arm64_guest.h, patch_svc).
         const arm64::ElfCode code = arm64::elf_code(file.data(), file.size());
@@ -232,7 +235,7 @@ bool ElfImage::link(const SymbolResolver& resolve, std::string* error,
     if (!protect_segments(error)) return false;
     if (!apply_irelative(error)) return false;
     seal_relro();
-    FlushInstructionCache(GetCurrentProcess(), mem_, size_);
+    FlushInstructionCache(GetCurrentProcess(), mem_, size_ + pool_size_);
     linked_ = true;
     return true;
 }
@@ -283,7 +286,8 @@ bool ElfImage::map_segments(const std::vector<uint8_t>& file, std::string* error
             owns_mem_ = false;
         }
     } else {
-        mem_ = static_cast<uint8_t*>(VirtualAlloc(nullptr, size_, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        mem_ = static_cast<uint8_t*>(
+            VirtualAlloc(nullptr, size_ + pool_size_, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
     }
     if (!mem_) {
         *error = "VirtualAlloc(" + std::to_string(size_) + ") failed: " + std::to_string(GetLastError());
@@ -293,6 +297,12 @@ bool ElfImage::map_segments(const std::vector<uint8_t>& file, std::string* error
 
     for (const Segment& s : loads_) {
         std::memcpy(at<uint8_t>(s.vaddr), file.data() + s.offset, s.filesz);
+    }
+    // Still read-write: the thunks go in, then the instructions that jump to them. protect_segments makes the pool
+    // executable once the pages are final.
+    if (pool_size_) {
+        std::memcpy(mem_ + size_, pool_words_.data(), pool_words_.size() * sizeof(uint32_t));
+        for (const X18Patch& p : x18_patches_) std::memcpy(at<uint8_t>(p.vaddr), &p.word, sizeof p.word);
     }
     return true;
 }
@@ -691,6 +701,11 @@ bool ElfImage::protect_segments(std::string* error) {
         }
         run = p;
     }
+    DWORD old;
+    if (pool_size_ && !VirtualProtect(mem_ + size_, pool_size_, PAGE_EXECUTE_READ, &old)) {
+        *error = "VirtualProtect failed: " + std::to_string(GetLastError());
+        return false;
+    }
     return true;
 }
 
@@ -718,8 +733,9 @@ void ElfImage::seal_relro() {
     VirtualProtect(at<uint8_t>(start), end - start, PAGE_READONLY, &old);
 }
 
-// x18 is the TEB on Windows on Arm (arm64_x18.h). WINAPK_ARM64_ALLOW_X18=1 loads such a library anyway.
-bool ElfImage::check_x18(const std::vector<uint8_t>& file, std::string* error) const {
+// x18 is the TEB on Windows on Arm (arm64_x18.h), so a library that writes it is rewritten to a virtual x18.
+// WINAPK_ARM64_X18_REWRITE=0 refuses it instead; WINAPK_ARM64_ALLOW_X18=1 loads it unchanged.
+bool ElfImage::check_x18(const std::vector<uint8_t>& file, std::string* error) {
     const arm64::ElfX18Scan e = arm64::scan_elf_x18(file.data(), file.size());
     // Reading x18 and restoring a saved context (libunwind's, a longjmp) leave the TEB where it is.
     if (!e.ok || !e.scan.scratch()) return true;
@@ -730,8 +746,137 @@ bool ElfImage::check_x18(const std::vector<uint8_t>& file, std::string* error) c
         std::fprintf(stderr, "[win.apk] %s: %s; loaded anyway (WINAPK_ARM64_ALLOW_X18)\n", path_.u8string().c_str(), text);
         return true;
     }
-    *error = std::string(text) + "; Windows on Arm keeps the thread's TEB in x18, so this library cannot run natively";
-    return false;
+    char rewrite[4] = {};
+    if (GetEnvironmentVariableA("WINAPK_ARM64_X18_REWRITE", rewrite, sizeof rewrite) == 1 && rewrite[0] == '0') {
+        *error = std::string(text) +
+                 "; Windows on Arm keeps the thread's TEB in x18, so this library cannot run natively";
+        return false;
+    }
+    return rewrite_x18(file, text, error);
+}
+
+namespace {
+
+// The two per-thread slots of the virtual x18: TLS slots, which live in the TEB's inline array. Taken once per
+// process and kept, since every rewritten library shares one x18 value.
+bool x18_slots(arm64::X18Slots* out, std::string* error) {
+    static std::once_flag once;
+    static arm64::X18Slots slots;
+    static std::string failure;
+    std::call_once(once, [] {
+        constexpr uint32_t kTebTlsSlots = 0x1480;  // TEB::TlsSlots on arm64; checked below against TlsSetValue
+        constexpr uint64_t kProbe = 0x57494e4150f18c0dull;
+        const DWORD v = TlsAlloc(), s = TlsAlloc();
+        const bool placed = v != TLS_OUT_OF_INDEXES && s != TLS_OUT_OF_INDEXES && v < 64 && s < 64;
+        if (placed) {
+            TlsSetValue(v, reinterpret_cast<void*>(kProbe));
+            uint64_t seen = 0;
+            std::memcpy(&seen, reinterpret_cast<const uint8_t*>(NtCurrentTeb()) + kTebTlsSlots + 8 * v, sizeof seen);
+            TlsSetValue(v, nullptr);
+            if (seen == kProbe) {
+                slots.value = kTebTlsSlots + 8 * v;
+                slots.scratch = kTebTlsSlots + 8 * s;
+                return;
+            }
+        }
+        failure = "cannot place the virtual x18's slots in the thread environment block";
+        if (v != TLS_OUT_OF_INDEXES) TlsFree(v);
+        if (s != TLS_OUT_OF_INDEXES) TlsFree(s);
+    });
+    if (!failure.empty()) {
+        *error = failure;
+        return false;
+    }
+    *out = slots;
+    return true;
+}
+
+}  // namespace
+
+// Rewrites every instruction that names x18 into a branch to a thunk (arm64_x18_rewrite.h). The whole change is
+// planned and checked first; nothing is written to the image unless every word can be done.
+bool ElfImage::rewrite_x18(const std::vector<uint8_t>& file, const std::string& why, std::string* error) {
+    const std::string head = why + "; it cannot be rewritten: ";
+    if (options_.reserved_address) {
+        *error = head + "a library in a range the caller reserved cannot be rewritten";
+        return false;
+    }
+    arm64::X18Slots slots;
+    if (!x18_slots(&slots, error)) {
+        *error = head + *error;
+        return false;
+    }
+    const arm64::X18Plan plan = arm64::plan_x18_sites(file.data(), file.size());
+    if (!plan.ok || plan.sites.empty()) {
+        *error = head + "no instruction that names x18 lies in the .eh_frame function ranges";
+        return false;
+    }
+    constexpr size_t kMaxSites = size_t{1} << 20;  // a thunk pool of at most about 30 MB, well inside branch range
+    if (plan.sites.size() > kMaxSites) {
+        *error = head + std::to_string(plan.sites.size()) + " instructions name x18, more than the " +
+                 std::to_string(kMaxSites) + " it handles";
+        return false;
+    }
+    if (plan.risky()) {
+        *error = head + "some instruction that names x18 may be data, not code (" +
+                 std::to_string(plan.outside_functions) + " outside the unwind tables, " +
+                 std::to_string(plan.literal_data) + " loaded as literals, " + std::to_string(plan.unreachable) +
+                 " unreachable, " + std::to_string(plan.implausible) +
+                 " in blocks that are not code; the first at file offset " + hex(plan.first_suspect) + ")";
+        return false;
+    }
+    uint64_t pool_vaddr = 0;
+    for (const Segment& s : loads_) pool_vaddr = std::max(pool_vaddr, page_up(s.vaddr + s.memsz));
+
+    std::vector<uint32_t> words;
+    std::vector<X18Patch> patches;
+    std::vector<uint8_t> patched(file);  // to look for what is left
+    std::string detail;
+    for (const arm64::X18Site& site : plan.sites) {
+        // The word is patched in the mapped image by its address, so that must be where the file's bytes are loaded.
+        bool mapped = false;
+        for (const Segment& s : loads_) {
+            mapped = mapped || ((s.flags & kPfX) && site.vaddr >= s.vaddr && site.vaddr - s.vaddr + 4 <= s.filesz &&
+                                site.offset == s.offset + (site.vaddr - s.vaddr));
+        }
+        // A shadow call stack push or pop would run with a virtual x18 of 0 on every new thread.
+        const bool shadow_stack = site.word == 0xf800865e /* str x30, [x18], #8 */ ||
+                                  site.word == 0xf85f8e5e /* ldr x30, [x18, #-8]! */;
+        if (!mapped || shadow_stack) {
+            *error = head + (shadow_stack ? "it uses x18 as a shadow call stack, which needs a stack per thread"
+                                          : "an instruction that names x18 is not in the mapped code") +
+                     " (file offset " + hex(site.offset) + ")";
+            return false;
+        }
+        const uint64_t thunk = pool_vaddr + words.size() * sizeof(uint32_t);
+        uint32_t jump;
+        if (!arm64::make_x18_thunk(site.word, site.vaddr, thunk, slots, site.borrow, &words, &jump, &detail)) {
+            char at[64];
+            std::snprintf(at, sizeof at, " at file offset 0x%llx", static_cast<unsigned long long>(site.offset));
+            *error = head + detail + at;
+            return false;
+        }
+        patches.push_back({site.vaddr, jump});
+        std::memcpy(patched.data() + site.offset, &jump, sizeof jump);
+    }
+    // Nothing may name x18 any more in the code, and in the thunks only the two slot accesses may.
+    const arm64::ElfX18Scan left = arm64::scan_elf_x18(patched.data(), patched.size());
+    size_t stray = 0;
+    for (uint32_t w : words) {
+        const bool slot = (w & 0xffc003e0) == 0xf9400240 || (w & 0xffc003e0) == 0xf9000240;
+        const uint32_t off = ((w >> 10) & 0xfff) * 8;
+        if (arm64::uses_x18(w) && !(slot && (off == slots.value || off == slots.scratch))) ++stray;
+    }
+    if (left.scan.uses || stray) {
+        *error = head + std::to_string(left.scan.uses + stray) + " use(s) of x18 would be left";
+        return false;
+    }
+    pool_words_ = std::move(words);
+    x18_patches_ = std::move(patches);
+    pool_size_ = static_cast<size_t>(page_up(pool_words_.size() * sizeof(uint32_t)));
+    std::fprintf(stderr, "[win.apk] %s: x18 rewritten (virtual register): %zu instruction(s), %zu byte(s) of thunks\n",
+                 path_.u8string().c_str(), x18_patches_.size(), pool_words_.size() * sizeof(uint32_t));
+    return true;
 }
 
 void ElfImage::register_arm64_code() {
@@ -739,6 +884,10 @@ void ElfImage::register_arm64_code() {
         if (!(s.flags & kPfX) || s.memsz == 0) continue;
         arm64::register_code(at<const void>(s.vaddr), s.memsz);
         arm64_code_.push_back(at<const void>(s.vaddr));
+    }
+    if (pool_size_) {
+        arm64::register_code(mem_ + size_, pool_size_);
+        arm64_code_.push_back(mem_ + size_);
     }
 }
 

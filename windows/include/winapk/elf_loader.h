@@ -139,8 +139,10 @@ private:
     bool protect_segments(std::string* error);
     bool apply_irelative(std::string* error);
     void register_arm64_code();
-    // False, with *error set, if the code uses x18 (arm64_x18.h).
-    bool check_x18(const std::vector<uint8_t>& file, std::string* error) const;
+    // False, with *error set, if the code uses x18 (arm64_x18.h) and cannot be loaded for it. With
+    // WINAPK_ARM64_X18_REWRITE=1 the code is planned for the virtual x18 of arm64_x18_rewrite.h instead.
+    bool check_x18(const std::vector<uint8_t>& file, std::string* error);
+    bool rewrite_x18(const std::vector<uint8_t>& file, const std::string& why, std::string* error);
     void call_init_function(uint64_t fn, bool with_args) const;
     void seal_relro();
     void run_initializers();
@@ -156,6 +158,12 @@ private:
     std::vector<const void*> arm64_code_;  // registered with arm64::register_code
     bool owns_mem_ = true;    // false when loaded into a caller's reserved range
     size_t size_ = 0;
+    // The x18 rewrite's thunks: page-aligned right after the image in the same allocation, so within branch range
+    // of the code, and the code words that become branches to them.
+    size_t pool_size_ = 0;
+    std::vector<uint32_t> pool_words_;
+    struct X18Patch { uint64_t vaddr; uint32_t word; };
+    std::vector<X18Patch> x18_patches_;
     uintptr_t bias_ = 0;     // runtime address = bias_ + ELF vaddr
     uint64_t lo_vaddr_ = 0;  // page-aligned lowest PT_LOAD vaddr
     uint64_t hi_vaddr_ = 0;  // page-aligned end of the highest PT_LOAD

@@ -30,11 +30,11 @@ upstream so its releases can be merged.
 | `include/winapk/`, `src/` | The ELF loader (`elf_loader.cpp`), the guest linker (`linker.cpp`), dynamic ELF TLS (`elf_tls.cpp`), the guest thread stack (`guest_stack.cpp`), the AArch64 thunks (`abi_thunk_arm64.cpp`), the guest `JNIEnv` (`guest_jni.cpp`, `jni_slots.inc`), the variadic JNI bridge (`jni_variadic.cpp`), native-method binding (`jni_bind.cpp`), libjnigraphics (`jnigraphics.cpp`) |
 | `src/mini_bionic.cpp`, `src/bionic/` | The Bionic shim: Android's libc, libdl, liblog, libm, libz and the NDK's `ALooper` and `ATrace` on the UCRT and Win32, about 900 functions |
 | `src/arm64/` | `arm64_native.cpp`: the per-thread `TPIDR_EL0` block, the TLSDESC resolver, `svc #0` answered by the shim. `arm64_abi.cpp`: the shim calls whose structs, flags or system call numbers arm64 lays out differently |
-| `include/winapk/arm64_x18.h` | The x18 scan: a library that uses x18 as scratch is refused (Windows keeps the TEB there) |
+| `include/winapk/arm64_x18.h`, `arm64_x18_rewrite.h` | The x18 scan, and the rewrite of a library that uses x18 as scratch (Windows keeps the TEB there): each instruction naming x18 becomes a branch to a thunk that runs it on a borrowed register holding a per-thread virtual x18. A library that cannot be rewritten is refused |
 | `host/` | `winapk-runtime.exe` (`runtime_main.cpp`), the app window (`win32_window.cpp`), the host natives (`native_*.cpp`, one file per Java class; `host_natives.cpp` binds them), the GL layer (`gl/`), app library loading (`guest_libs.cpp`, `guest_stub.cpp`, `translator_main.cpp`), shared storage (`user_folders.cpp`), java.io opens with `FILE_SHARE_DELETE` (`java_io_open.cpp`), class-data sharing (`cds.cpp`, `cds_util.cpp`) |
 | `launcher/` | `Win.apk.exe`: the app library, the install helper and the permission dialogs (`launcher_main.cpp`), and its state machines, each a header a unit test drives (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `prompt_ids.h`, `theme_choice.h`) |
 | `java/` | Windows-only Java: `com.winapk.tools` (`winapk-tools.jar`), `java_base_patch/` (an overlay for `java.base`), `winapk-framework.classlist` (the framework archive's classes, `host/cds.h`) |
-| `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which libraries an ARM64 PC refuses, and why), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py`, `gen_icon.py` |
+| `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which arm64 libraries use x18 as scratch), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py`, `gen_icon.py` |
 | `scripts/` | `build_java.sh`, `build_framework_res.sh`, `fetch_angle.sh`, `fetch_webview2.sh`, `stage_runtime.sh`, `bake_jre.sh`, `merge_classlists.py`, `arch.sh` |
 | `test/` | The unit tests (`*_test.cpp`), the guest test libraries (`guest/`, plain clang + lld, no NDK), the Java tests (`java/`), the compatibility sweep (`compat/`) |
 | `package/` | The installer (`winapk.iss`, Inno Setup), `README.txt`, `RELEASE_NOTES.md` and `THIRD_PARTY_NOTICES.txt` shipped with a release |
@@ -140,7 +140,8 @@ gets paths in any language whole.
 | `WINAPK_HEADLESS=1` | No window; `WINAPK_HEADLESS_FRAME=<file.bmp>` saves the last frame and `WINAPK_HEADLESS_EXIT_AFTER_FRAMES=<n>` exits after that many presented frames |
 | `WINAPK_PHONE_SIZE=WxH`, `WINAPK_RESIZABLE=0`, `WINAPK_DENSITY=<dpi>` | The phone size in dp, letterboxing instead of resizing, the density the app sees |
 | `WINAPK_ABIS` | Overrides the ABI list an install picks (tests) |
-| `WINAPK_ARM64_ALLOW_X18=1` | Loads a library although it uses x18 as scratch (`include/winapk/arm64_x18.h`), to see what it does. The first exception or Windows call made while its value is in x18 ends the process |
+| `WINAPK_ARM64_ALLOW_X18=1` | Loads a library that uses x18 as scratch unchanged (`include/winapk/arm64_x18.h`), to see what it does. The first exception or Windows call made while its value is in x18 ends the process |
+| `WINAPK_ARM64_X18_REWRITE=0` | Refuses a library that uses x18 as scratch instead of rewriting it. By default it is rewritten at load (`include/winapk/arm64_x18_rewrite.h`): every instruction that names x18 becomes `b thunk`, and the thunk runs the instruction on another register loaded from and stored to a per-thread slot in the TEB (two `TlsAlloc` slots), so the real x18 stays the TEB. `blr x18` becomes `bl thunk`; `br x18` and `ret x18` jump from a register that nothing can still read where the branch may land (chosen from the code of the function and the functions joined to it by direct branches; the link register only for a table dispatch); `adr` and `adrp` into x18 are rebuilt from the thunk's own address. All or nothing: a library is refused, with the reason, if one instruction cannot be rewritten (exclusives, literal loads into x18, authenticated branches), if no register is free to hold the target of a `br x18`, if one that names x18 may be data (a literal pool word, or a word nothing enters) rather than code, if it uses x18 as a shadow call stack (a push would run with a virtual x18 of 0), if none of its x18 instructions lie in `.eh_frame` function ranges, or if it is loaded into a range the caller reserved. Libraries that only read x18 are left alone. `WINAPK_ARM64_ALLOW_X18=1` wins when both are set |
 | `WINAPK_FRAME_TIMING=1` | Every 5 s, a `[frame-timing]` line with a GL view's fps and each step's mean (`compose` is the GPU copy and present when frames go to the window on the GPU) |
 | `WINAPK_GL_PRESENT=readback`, `on` or `gpu` | GL frames, the view tree and SurfaceView frames go to the window as DirectComposition layers with no readback (`host/gl/gl_present.h`), on by default on a Direct3D 11 GPU (Settings > Apps > "Enable GPU rendering", `GpuPresent`; an app's own choice is `library\<name>.gpu`). `readback` turns it off, `on` turns it on, `gpu` forces it on with WARP too. Not with `WINAPK_HEADLESS_FRAME` |
 | `WINAPK_TEST_WORKAREA=<w>x<h>[+<x>+<y>]` | Stands in for the monitor's work area, in pixels; `@file` reads it from a file at every fit |
@@ -178,6 +179,7 @@ Every test is a program built by CMake; `win-ci.yml` runs each on
 |---|---|
 | `winapk-thunk-test` | Native-method thunks with mixed, stack-overflowing and narrow arguments; the variadic entry stub's `va_list`; the tagged zero stub |
 | `winapk-jni-test`, `winapk-jni-variadic-test` | The guest `JNIEnv` against a mock JVM; the variadic bridge for every call kind and argument type, through `...` and `va_list` |
+| `winapk-x18-rewrite-test` | The virtual x18: each form's operands (encodings from llvm-mc), random words against the scan, the generated thunks run on this PC (registers, flags and memory as before, the virtual x18 as expected, `br`, `blr` and `ret` through x18 and `adr` and `adrp` into it, 16 threads with one each), and the code-or-data planner and the choice of the borrowed register on small ELF files. Needs Windows on Arm |
 | `winapk-x18-scan-test` | The x18 scan one instruction at a time (encodings from llvm-mc): reads, writes, the `ldp x18, x19` of a context restore that does not count, a range scan |
 | `winapk-arm64-test <guest/arm64>` | `arm64_isa.c` built into the test and three times as guest libraries must agree on every function; `arm64_bridge_guest.c` (calls both ways, variadics, threads, atexit, arm64's `struct stat`); `arm64_flow_guest.c` (returns into ancestor frames, coroutines, RETAA, deep recursion, saturating conversions, exclusives, STLR/LDAR); ELF TLS through TLSDESC; C++ exceptions (`arm64_eh_guest.cpp`, built when `ANDROID_NDK_HOME` names an NDK); `dlclose`; `svc #0`; signals delivered to guest handlers |
 | `winapk-linker-test <guest/aarch64/link>` | A four-library tree with a `DT_NEEDED` cycle and a plugin: constructor order, symbol resolution order, `dlsym` scopes, the guest's `dlopen`, `dlsym`, `dlerror` and `dladdr`, a library opened by its Android path; corrupt ELF headers and tables refused |
@@ -221,9 +223,9 @@ functions and libraries that did not load. `--require-drew` makes it a test: an
 app that does not draw gets one more try, then the exit code is 1.
 
 Every pull request that touches the runtime boots the smoke set,
-`test/compat/smoke.txt` (one app of each kind), with `--require-drew`, less
-Klooni, whose libGDX uses x18: the job checks instead that it ends and its log
-says why. The whole corpus runs only by hand (Run workflow, "Full
+`test/compat/smoke.txt` (one app of each kind), with `--require-drew`. Klooni,
+whose libGDX uses x18, then runs once more with `WINAPK_ARM64_X18_REWRITE=0`: the
+job checks that it ends and its log says why. The whole corpus runs only by hand (Run workflow, "Full
 compatibility sweep"), as four shards; it fails nothing. Some apps of
 `apps.txt` ship no arm64-v8a code and are expected not to start.
 
@@ -273,6 +275,10 @@ the pull request with a merge commit, never a squash or rebase, so the next
 
 What the copies in `windows/runtime/` change, by file (paths are upstream's,
 under `runtime/`):
+
+- `runtime/java/android/content/res/AssetManager.java`: an asset name with `\` is opened
+  and listed with `/`; libGDX opens `skin/uiskin.json` through `java.io.File.getPath()`,
+  which is `skin\uiskin.json` on Windows.
 
 - `runtime/java/android/os/MacApkBinderTransport.java`: tries `nativeInit()`
   before looking for upstream's `libmacapk-binder.dylib`, since the Windows

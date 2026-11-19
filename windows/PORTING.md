@@ -13,7 +13,7 @@ x64 PCs. Licensed under AGPL-3.0, like upstream.
 
 Out of scope: x64 PCs (use israel2176/win.apk there), apps whose native code is only
 `x86_64` or only `armeabi-v7a` (Windows on Arm CPUs have no AArch32), and
-libraries that use x18 as scratch (section 3, D6).
+libraries whose use of x18 cannot be rewritten (section 3, D6).
 
 ## 2. From Mac.apk to Windows on Arm
 
@@ -30,8 +30,9 @@ directly to a library's imports and HotSpot calls guest natives through thin
 thunks. What differs from the Mac:
 
 - **x18** is the TEB pointer on Windows on Arm; Android code may use it as a
-  scratch register. Libraries that write it are refused at load
-  (`include/winapk/arm64_x18.h`).
+  scratch register. Libraries that write it are rewritten at load to use a
+  per-thread virtual x18, or refused if they cannot be
+  (`include/winapk/arm64_x18_rewrite.h`).
 - **TPIDR_EL0** is free for user code on Windows. Bionic keeps its TLS slots
   there (the stack guard is slot 5), so each thread gets a block on its first
   entry into guest code (`src/arm64/arm64_native.cpp`).
@@ -68,10 +69,32 @@ D5. **Guest code enters the system in three places only**: the loader
 (`ElfImage`), the linker's image registry (`GuestLinker`) and native-method
 binding (`jni_bind`). New code must not call guest functions around them.
 
-D6. **Refuse what cannot run, and say why**: an x86_64 or armeabi-v7a
-library, or one that writes x18, fails at load with a message the user sees
-(the launcher's install and start errors, the run log). `WINAPK_ARM64_ALLOW_X18=1`
-loads it anyway, for investigation.
+D6. **Refuse what cannot run, and say why**: an x86_64 or armeabi-v7a library, or
+one that writes x18 and cannot be rewritten, fails at load with a message the user
+sees (the launcher's install and start errors, the run log). A library that writes
+x18 gets a virtual x18: each instruction that names x18 jumps to a thunk in a pool
+after the image that runs it on a borrowed register, taken from and put back in a
+per-thread TEB slot (`arm64_x18_rewrite.h`). x18 is never changed. The rewrite is all
+or nothing and patches only words that are code: inside `.eh_frame` functions, not
+read as a literal, and reachable (a function with an indirect `br` takes every block
+start as reachable). A data word right after an unconditional branch in such a
+function is told from code only by its block being plausible code.
+`blr x18` becomes `bl thunk` (x16 may be clobbered by a call). After a `br x18` nothing
+can restore a borrowed register, so its thunk clobbers one that is dead wherever the
+branch may land: a register of x9..x17, then x8..x0, then the link register (the last
+only for a table dispatch, an indexed load then an add of the base, never for a tail
+call through a pointer). The planner reads each function with the functions joined to
+it by direct non-call branches (a hot/cold split, a tail call) and takes the block
+starts as the landing points; a register is dead at one if the straight-line code from
+it writes the register before reading it, or reaches a call; a word it does not fully
+decode, a return (x0, x1 and the link register), a tail call or a branch that is not a
+dispatch (the arguments and the link register) count as reads. No register left: the
+library is refused. A hand-written routine that passes a value in x9..x15 across a call
+is the one case this cannot see. `adr` and `adrp` into x18 are rebuilt with `adrp`+`add`
+from the thunk's address; the image and the pool are one page-aligned allocation, so
+the page distance is the same as in the file.
+`WINAPK_ARM64_X18_REWRITE=0` refuses such a library instead, and
+`WINAPK_ARM64_ALLOW_X18=1` loads it unchanged, for investigation.
 
 ## 4. Technical findings
 
@@ -151,8 +174,9 @@ forbids are escaped.
 ## 6. Known gaps
 
 - The thunk pool is mapped read-write-execute and has no unwind information.
-- Apps that ship only `x86_64` or only `armeabi-v7a` code do not run; neither
-  do libraries that write x18.
+- Apps that ship only `x86_64` or only `armeabi-v7a` code do not run; neither do
+  libraries whose use of x18 cannot be rewritten. A rewritten x18 instruction costs
+  four to six extra instructions and two TEB accesses.
 - Some shim answers still describe an x86_64 device (system properties such
   as `ro.product.cpu.abi`, `uname`'s machine); arm64 apps get arm64 layouts
   through `arm64_abi.cpp`, but these values are to be checked.

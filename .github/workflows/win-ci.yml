@@ -226,6 +226,8 @@ jobs:
         run: ./build/winapk-jni-variadic-test.exe
       - name: Run the x18 scan test
         run: ./build/winapk-x18-scan-test.exe
+      - name: Run the x18 rewrite test
+        run: ./build/winapk-x18-rewrite-test.exe
       - name: Run the arm64 test
         run: ./build/winapk-arm64-test.exe guest/arm64
       - name: Run the guest linker test
@@ -480,7 +482,6 @@ jobs:
             frame.bmp
 
   smoke:
-    # Klooni's libgdx.so uses x18 and is refused: it is left out of the smoke set and must end saying why.
     name: App smoke test
     needs: [changes, build]
     if: needs.changes.outputs.tests == 'true'
@@ -511,12 +512,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { Get-Content cds/dump.log -Tail 50; exit 1 }
           python windows/test/compat/sweep.py --runtime stage `
             --apks apk-cache --out smoke --frames 150 --timeout 180 `
-            --only-from windows/test/compat/smoke.txt --skip dev.lonami.klooni --require-drew
+            --only-from windows/test/compat/smoke.txt --require-drew
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python windows/scripts/merge_classlists.py framework.classlist (Get-ChildItem classlists/*.classlist)
-      - name: An app whose library uses x18 ends and says why
+      - name: With the x18 rewrite off, an app that needs it ends and says why
         shell: pwsh
         run: |
+          $env:WINAPK_ARM64_X18_REWRITE = "0"
           python windows/test/compat/sweep.py --runtime stage --apks apk-cache --out refused --frames 150 `
             --timeout 120 --only dev.lonami.klooni
           $log = "refused/logs/dev.lonami.klooni.log"

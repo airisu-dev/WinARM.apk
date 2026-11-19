@@ -114,3 +114,4 @@ java/com/macapk/loader/WindowOverlayStack.java	0a2d13cf6d0a33d6ee6a069c6aa4e87a5
 java/com/macapk/loader/WindowsBroker.java	new
 java/dalvik/system/NativeLibraryPath.java	new
 java/javax/microedition/khronos/egl/MacApkEGL10.java	364cc1a1be9a8da810173203cf35624612b15d0e
+java/android/content/res/AssetManager.java	419822423a91c63d55535be392e33a770670cc94

@@ -13,8 +13,7 @@ machines share the corpus; --merge joins their report directories (report.json,
 logs, frames) into one report, as if one machine had run them all.
 --only-from takes the packages to run from a file (smoke.txt), and
 --require-drew makes the sweep a test: an app that does not draw is run once
-more, and if it still does not the exit code is 1. --skip leaves packages out
-(the ARM64 smoke test skips the libGDX game an ARM64 PC refuses).
+more, and if it still does not the exit code is 1. --skip leaves packages out.
 
 For each app it runs winapk-runtime with WINAPK_HEADLESS=1 and a fresh data
 directory, waits for --frames presented frames (or the timeout), and keeps the
