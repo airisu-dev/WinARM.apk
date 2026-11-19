@@ -274,6 +274,10 @@ the pull request with a merge commit, never a squash or rebase, so the next
 What the copies in `windows/runtime/` change, by file (paths are upstream's,
 under `runtime/`):
 
+- `runtime/java/android/content/res/AssetManager.java`: an asset name with `\` is opened
+  and listed with `/`; libGDX opens `skin/uiskin.json` through `java.io.File.getPath()`,
+  which is `skin\uiskin.json` on Windows.
+
 - `runtime/java/android/os/MacApkBinderTransport.java`: tries `nativeInit()`
   before looking for upstream's `libmacapk-binder.dylib`, since the Windows
   host binds the transport's natives itself (`windows/host/binder_win.cpp`);
