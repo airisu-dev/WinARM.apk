@@ -1,11 +1,11 @@
 # Win.apk's build and tests, on Windows on Arm (windows-11-arm):
 #
 #   What changed ──┬─ Guest libraries (Ubuntu) ─┬─ Unit tests
-#                  ├─ Build (ARM64, ccache) ────┼─ Runtime tests
-#                  │                            ├─ App smoke test
-#                  │                            ├─ Package (preview + installer)
-#                  │                            └─ Sweep 1/4 .. 4/4 ─ Sweep report  (only when asked)
-#                  └─ API coverage tool test (Ubuntu)
+#                  └─ Build (ARM64, ccache) ────┼─ Runtime tests
+#                                               ├─ App smoke test
+#                                               ├─ API coverage report
+#                                               ├─ Package (preview + installer)
+#                                               └─ Sweep 1/4 .. 4/4 ─ Sweep report  (only when asked)
 #
 # The build runs once; the other jobs take its exes and staged runtime as
 # artifacts. Every pull request boots the smoke set (windows/test/compat/smoke.txt)
@@ -110,22 +110,6 @@ jobs:
             ${{ runner.temp }}/guest/aarch64/link/*.so
             ${{ runner.temp }}/guest/e2e/arm64/libwinapk_jni_guest.so
             ${{ runner.temp }}/guest/e2e/classes/**
-
-  apicov-test:
-    # Plain Java: it needs neither the ARM64 build nor Windows, so it runs at once, beside the other jobs.
-    name: API coverage tool test
-    needs: changes
-    if: needs.changes.outputs.tests == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-      - name: Run the API coverage tool test
-        run: windows/test/apicov/run_test.sh "$RUNNER_TEMP/apicov"
 
   build:
     # Temurin, because other aarch64 JDKs' jni_md.h make jint a long.
@@ -557,6 +541,61 @@ jobs:
           # windows/java/winapk-framework.classlist, made again.
           name: framework-classlist
           path: framework.classlist
+
+  apicov-report:
+    # How much of Android's public API the staged runtime has and how much of it does work
+    # (windows/scripts/api_coverage.sh). It informs and fails only when the tool itself does: its
+    # fixture test, or a line of the API list it cannot read. Windows, for winapk-runtime --list-natives.
+    name: API coverage report
+    needs: [changes, build]
+    if: needs.changes.outputs.tests == 'true'
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          architecture: aarch64
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANGARM64
+          release: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: runtime-stage
+          path: stage
+      # The pinned API list and AOSP's framework (about 200 MB), checked by SHA-256 on every run.
+      - uses: actions/cache@v4
+        with:
+          path: thirdparty/android-api
+          key: android-api-${{ hashFiles('windows/scripts/fetch_android_api.sh') }}
+      - name: Run the API coverage tool test
+        run: |
+          export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
+          windows/test/apicov/run_test.sh "$RUNNER_TEMP/apicov-test"
+      - name: Write the API coverage report
+        run: |
+          export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
+          windows/scripts/api_coverage.sh --runtime stage --out apicov \
+            --label "${{ github.head_ref || github.ref_name }} @ ${GITHUB_SHA::7}"
+          # The headline figures in the run's summary: the link table and the bodies table.
+          awk '/^## (By state|Packages with the most gaps)/ { skip = 1 } /^## Do the methods/ { skip = 0 }
+               /^## Packages with the most stubs/ { exit } !skip' apicov/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: |
+            apicov/report.md
+            apicov/report.json
+            apicov/gaps.tsv
+            apicov/stubs.tsv
+            apicov/natives.txt
 
   sweep:
     name: Sweep ${{ matrix.shard }}/4

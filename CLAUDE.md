@@ -28,7 +28,7 @@ setting is also a change to the document that names it.
 | `runtime/java/` | Upstream's Android framework in Java (never edited; `windows/runtime/` replaces or adds files) + `com/macapk/loader/` (Boot, ActivityHost, package manager...). Names say macapk: that is upstream's, keep them |
 | `runtime/src/`, `runtime/translator/` | Upstream native sources; Windows uses only the two files above |
 | `scripts/build_framework_res.sh` | The platform resource APK (called by `windows/scripts/`) |
-| `.github/workflows/` | `win-ci.yml` (PRs and by hand: what changed, then one ARM64 build on `windows-11-arm` with ccache, feeding unit tests, runtime tests, a 10-app smoke test and packaging; the full app sweep only by hand), `win-release.yml` (by hand only: builds, smoke-tests, publishes `Win.apk-Setup-arm64.exe` and a zip as a pre-release) |
+| `.github/workflows/` | `win-ci.yml` (PRs and by hand: what changed, then one ARM64 build on `windows-11-arm` with ccache, feeding unit tests, runtime tests, a 10-app smoke test, the API coverage report and packaging; the full app sweep only by hand), `win-release.yml` (by hand only: builds, smoke-tests, publishes `Win.apk-Setup-arm64.exe` and a zip as a pre-release) |
 
 Data at run time: `%LOCALAPPDATA%\Win.apk\`: `library\` (APKs + `.label`),
 `apps\<name>\`, `android\` (the Android filesystem: the app sees
