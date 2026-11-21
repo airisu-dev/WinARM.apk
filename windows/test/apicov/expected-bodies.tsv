@@ -1,0 +1,21 @@
+# Phase 3: each method of package fb that links, judged against aosp/fb and natives.txt.
+# <class> <tab> <member name> <tab> <verdict>
+fb.Absy	<init>	same-as-aosp
+fb.Absy	concreteEmpty	same-as-aosp
+fb.Absy	hook	abstract
+fb.Body	<init>	same-as-aosp
+fb.Body	emptyBoth	same-as-aosp
+fb.Body	emptyStub	stub
+fb.Body	inheritedReal	implemented
+fb.Body	natImpl	implemented
+fb.Body	natStub	stub
+fb.Body	natUnbound	stub
+fb.Body	notInAosp	unknown
+fb.Body	nullBoth	same-as-aosp
+fb.Body	realHere	implemented
+fb.Body	stubInt	stub
+fb.Body	throwsBoth	same-as-aosp
+fb.Body	throwsStub	stub
+fb.Cb	onDefault	same-as-aosp
+fb.Cb	onThing	abstract
+fb.Ctor	<init>	stub

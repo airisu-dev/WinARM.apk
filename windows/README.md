@@ -34,9 +34,9 @@ upstream so its releases can be merged.
 | `host/` | `winapk-runtime.exe` (`runtime_main.cpp`), the app window (`win32_window.cpp`), the host natives (`native_*.cpp`, one file per Java class; `host_natives.cpp` binds them), the GL layer (`gl/`), app library loading (`guest_libs.cpp`, `guest_stub.cpp`, `translator_main.cpp`), shared storage (`user_folders.cpp`), java.io opens with `FILE_SHARE_DELETE` (`java_io_open.cpp`), class-data sharing (`cds.cpp`, `cds_util.cpp`) |
 | `launcher/` | `Win.apk.exe`: the app library, the install helper and the permission dialogs (`launcher_main.cpp`), and its state machines, each a header a unit test drives (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `prompt_ids.h`, `theme_choice.h`) |
 | `java/` | Windows-only Java: `com.winapk.tools` (`winapk-tools.jar`), `java_base_patch/` (an overlay for `java.base`), `winapk-framework.classlist` (the framework archive's classes, `host/cds.h`) |
-| `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which arm64 libraries use x18 as scratch), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py`, `gen_icon.py` |
-| `scripts/` | `build_java.sh`, `build_framework_res.sh`, `fetch_angle.sh`, `fetch_webview2.sh`, `stage_runtime.sh`, `bake_jre.sh`, `merge_classlists.py`, `arch.sh` |
-| `test/` | The unit tests (`*_test.cpp`), the guest test libraries (`guest/`, plain clang + lld, no NDK), the Java tests (`java/`), the compatibility sweep (`compat/`) |
+| `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which arm64 libraries use x18 as scratch), `apicov/` (the API coverage report, Java), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py`, `gen_icon.py` |
+| `scripts/` | `build_java.sh`, `build_framework_res.sh`, `fetch_angle.sh`, `fetch_webview2.sh`, `fetch_android_api.sh`, `api_coverage.sh`, `stage_runtime.sh`, `bake_jre.sh`, `merge_classlists.py`, `arch.sh` |
+| `test/` | The unit tests (`*_test.cpp`), the guest test libraries (`guest/`, plain clang + lld, no NDK), the Java tests (`java/`), the compatibility sweep (`compat/`), the API coverage tool's fixture (`apicov/`) |
 | `package/` | The installer (`winapk.iss`, Inno Setup), `README.txt`, `RELEASE_NOTES.md` and `THIRD_PARTY_NOTICES.txt` shipped with a release |
 | `cmake/`, `compat/`, `third_party/` | The CMake steps that cut the GL and Bitmap bridges out of upstream's `native_methods.cpp` and `bionic_shim.cpp`, a CoreFoundation shim for `native_sqlite.cpp`, the Khronos headers |
 
@@ -104,6 +104,7 @@ windows/scripts/bake_jre.sh "$JAVA_HOME" runtime/lib runtime/jre
 runtime/bin/winapk-runtime.exe --apk app.apk [--jdk "$JAVA_HOME"] [--data <dir>] [--install-only]
 runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--data <dir>] --gms <command> [args]
 runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--data <dir>] --verify-apk <file>
+runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--lib <dir>] --list-natives <file>
 ```
 
 - `--apk` takes a plain APK or a split bundle (`.apkm`, `.xapk`, `.apks`).
@@ -119,6 +120,10 @@ runtime/bin/winapk-runtime.exe [--jdk "$JAVA_HOME"] [--data <dir>] --verify-apk 
   and minSdkVersion, whether its signature verifies and whether Google signed
   it, as `KEY<tab>value` lines; exit 0 Google-signed, 4 another signer, 3 does
   not verify, 1 not an app. The Google services setup installs a file only on 0.
+- `--list-natives` binds the host natives as for an app, with no app and no
+  class-data sharing (it leaves the data folder alone), and writes one line
+  per native method of the host classes: `<class> <name> <signature>
+  implemented|stub`. The API coverage report reads it.
 
 `Win.apk.exe` has the user-facing command line (`<file>`, `--run`) and the
 helper verbs `install`, `uninstall`, `runtime-permission`, `special-access` and
@@ -199,6 +204,7 @@ Every test is a program built by CMake; `win-ci.yml` runs each on
 | `winapk-gl-test` | ANGLE makes a context and the read-back frame has the right colors |
 | `winapk-binder-test` | `host/binder_win.cpp` between three real JVMs (`BinderTransportTest.java`: transact, oneway order, binder identity, fds, death notification, the broker's caller checks, the Google account mirror); and java.io's opens (`FileShareDeleteTest.java`) |
 | `test/java/*Test.java` | Framework pieces against the built jars: file separators, renames, Android paths, damage rectangles, camera2 stills, host network, touch, permissions, APK signatures, App Links, scan records |
+| `test/apicov/run_test.sh` | The API coverage tool against a fixture (CI runs it first in the "API coverage report" job): one planted class or member per state, the signature format's hard cases (annotations with arguments, generics and their erasure, varargs, nested and inner classes, `java.lang` short names) and its constants; then the bodies, against an AOSP copy and a natives listing: one planted method per verdict |
 | CI steps | The staged runtime boots an F-Droid APK headless and in a window (with a resize), class-data sharing maps on the second start, a service host is replaced by the user's start, `--gms selftest`/`status`, `--verify-apk` |
 
 The guest libraries are built with plain clang + lld (`test/build_guest.sh`,
@@ -232,11 +238,60 @@ compatibility sweep"), as four shards; it fails nothing. Some apps of
 `test/compat/startbench.py` measures start times and memory per app and
 configuration.
 
+## API coverage
+
+How much of Android's public API (API 36) a staged runtime has, checked the way
+the JVM links an app against it, and how much of that does work:
+
+```sh
+windows/scripts/api_coverage.sh --runtime <staged runtime> --out <report dir> \
+    [--jre <java home>] [--natives <file>] [--label <name>] [--self-check]
+```
+
+`fetch_android_api.sh` downloads the reference into `thirdparty/android-api/`
+(not in git), pinned and checked against its SHA-256: AOSP's merged public API
+list (`prebuilts/sdk`, `36/public/api/android.txt`, Mainline modules included)
+and Robolectric's build of the AOSP framework (`org.robolectric:android-all`,
+about 200 MB). The tool, `tools/apicov/`, reads the list (metalava's signature
+format), indexes the classes the runtime puts on the JVM (the JRE's modules
+with the `java.base` and `jdk.unsupported` patches,
+then `android-framework.jar`, `macapk-loader.jar` and bcprov) and gives every
+class and member one state: `ok`, `missing-class`, `missing-member`,
+`wrong-kind`, `wrong-return`, `wrong-type`, `wrong-static`, `wrong-access`,
+`wrong-final`, `wrong-abstract`, `wrong-constant` or `wrong-hierarchy`. It
+writes `report.md` (the figures, Android and JDK packages apart, and the
+packages with the most gaps), `report.json` (the same numbers, identical from
+run to run) and `gaps.tsv` (every gap, one per line).
+
+Each Android method and constructor that links is then judged by its code:
+`implemented` (real code here), `same-as-aosp` (empty, a default or a throw,
+as AOSP's own is), `stub` (trivial here where AOSP's does work, or a native
+bound to a stub or not bound at all), `abstract` (abstract in the API: in AOSP
+a hidden class the system hands out does the work, which is not judged) or
+`unknown`. Natives are judged by how the runtime binds them:
+`bin/winapk-runtime.exe --list-natives`, which the script runs when the runtime
+has it, or a listing given with `--natives`. `report.md` gives the share that
+works and the packages with the most stubs, `stubs.tsv` every stub. Calls are
+not followed, so a real body that only calls a stub counts as implemented.
+
+It measures whether an app that uses an API links and reaches code, not
+whether that code does what Android does, nor what share of apps run.
+`--self-check` matches the same list against the real AOSP framework, which
+should come out complete. Without a `jre/` in the runtime (a plain
+`build_java.sh` output), `--jre` names the Java home whose modules stand in for
+it. Needs a JDK 21 and curl.
+
+CI writes the report for every pull request that touches the runtime (the "API
+coverage report" job, after the build): its headline figures go to the run's
+summary, and `report.md`, `report.json`, `gaps.tsv`, `stubs.tsv` and
+`natives.txt` to the `api-coverage` artifact. It fails only when the tool does:
+its fixture test, or a line of the API list it cannot read.
+
 ## CI and releases
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
+| `.github/workflows/win-ci.yml` | Pull requests touching `windows/` or `runtime/`; by hand; a push to `main` (build only) | One build on `windows-11-arm`, then unit tests, runtime tests, the smoke set and packaging side by side; the API coverage report beside them (its summary in the run's page, the report as the `api-coverage` artifact); the sweep only by hand. A launcher- or package-only change builds and packages but runs no app; a new push cancels the run in progress |
 | `.github/workflows/win-release.yml` | By hand, with a dated tag such as `v26.1118.0-preview` | Builds and smoke-tests on `windows-11-arm`, then publishes `Win.apk-Setup-arm64.exe` and `Win.apk-windows-arm64.zip` as a pre-release with `package/RELEASE_NOTES.md` as the notes |
 
 Inno Setup only packs files, so the packaging jobs run on `windows-latest`.
