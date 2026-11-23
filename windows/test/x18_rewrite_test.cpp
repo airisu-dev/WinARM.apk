@@ -438,6 +438,19 @@ void test_plan() {
         X18Plan p = plan_x18_sites(f.data(), f.size());
         check(p.ok && p.outside_functions == 1 && p.risky(), "plan: x18 outside the unwind tables");
     }
+    // x18 only in a table after the functions: nothing to rewrite, when the functions cover the code.
+    {
+        std::vector<uint32_t> text(8, kNop);
+        text.push_back(kRet);
+        text.push_back(kX18Mov);
+        auto f = make_elf(text, {{0, 9}});
+        check(x18_data_only(plan_x18_sites(f.data(), f.size())), "plan: x18 in a table outside the functions");
+        auto g = make_elf({kNop, kRet, kX18Mov}, {{0, 2}});
+        check(!x18_data_only(plan_x18_sites(g.data(), g.size())), "plan: too little code covered");
+        auto h = make_elf({kNop, kX18Mov, kRet}, {{0, 3}});
+        check(!x18_data_only(plan_x18_sites(h.data(), h.size())), "plan: a site in a function");
+        check(!x18_data_only(plan_x18_sites(f.data(), 16)), "plan: not an ELF file");
+    }
     // The register an indirect branch through x18 clobbers: one that nothing can still read where the branch may land.
     {
         constexpr uint32_t kBrX18 = 0xd61f0240, kReadX16 = 0xaa1003e0 /* mov x0, x16 */,

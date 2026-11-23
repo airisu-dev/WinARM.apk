@@ -807,6 +807,13 @@ bool ElfImage::rewrite_x18(const std::vector<uint8_t>& file, const std::string& 
         return false;
     }
     const arm64::X18Plan plan = arm64::plan_x18_sites(file.data(), file.size());
+    if (arm64::x18_data_only(plan)) {
+        std::fprintf(stderr,
+                     "[win.apk] %s: %s; %zu word(s) outside the unwind tables look like x18 instructions and are "
+                     "taken as data, nothing to rewrite\n",
+                     path_.u8string().c_str(), why.c_str(), plan.outside_functions);
+        return true;
+    }
     if (!plan.ok || plan.sites.empty()) {
         *error = head + "no instruction that names x18 lies in the .eh_frame function ranges";
         return false;

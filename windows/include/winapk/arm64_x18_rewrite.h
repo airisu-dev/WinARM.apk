@@ -447,6 +447,8 @@ struct X18Plan {
     size_t unreachable = 0;        // ... no control flow reaches (a function without an indirect br)
     size_t implausible = 0;        // ... in a block that is not plausible code (a function with one)
     size_t first_suspect = 0;      // file offset of the first word counted above
+    size_t exec_bytes = 0;         // the executable bytes of the file
+    size_t covered_bytes = 0;      // ... of them inside .eh_frame functions
     bool ok = false;               // false: not a readable arm64 ELF file, or it has no function ranges
     bool risky() const { return outside_functions || literal_data || unreachable || implausible; }
 };
@@ -457,6 +459,17 @@ inline X18Plan plan_x18_sites(const uint8_t* file, size_t size) {
     const ElfCode code = elf_code(file, size);
     if (!code.ok || code.functions.empty()) return plan;
     plan.ok = true;
+    for (const ExecRange& e : code.ranges) {
+        plan.exec_bytes += static_cast<size_t>(e.size);
+        uint64_t cur = e.vaddr;  // the functions are sorted by start; one that overlaps an earlier one counts once
+        for (const FdeRange& f : code.functions) {
+            const uint64_t lo = std::max({f.lo, cur, e.vaddr}), hi = std::min(f.hi, e.vaddr + e.size);
+            if (hi > lo) {
+                plan.covered_bytes += static_cast<size_t>(hi - lo);
+                cur = hi;
+            }
+        }
+    }
     auto names_x18 = [](uint32_t w) { return uses_x18(w) || x18_operands(w).fields != 0; };
     auto suspect = [&](uint64_t off) {
         if (!plan.first_suspect) plan.first_suspect = static_cast<size_t>(off);
@@ -683,6 +696,13 @@ inline X18Plan plan_x18_sites(const uint8_t* file, size_t size) {
     std::sort(plan.sites.begin(), plan.sites.end(),
               [](const X18Site& a, const X18Site& b) { return a.vaddr < b.vaddr; });
     return plan;
+}
+
+// A library that was scanned as using x18 but has no x18 instruction in the code the unwind tables describe: what
+// names x18 is a table kept in .text (OpenSSL's P-256 table, SHA-256 constants), which nothing can rewrite or needs
+// to. Too little coverage says nothing, so the tables must describe at least 80% of the code.
+inline bool x18_data_only(const X18Plan& plan) {
+    return plan.ok && plan.sites.empty() && plan.covered_bytes * 5 >= plan.exec_bytes * 4;
 }
 
 }  // namespace winapk::arm64
