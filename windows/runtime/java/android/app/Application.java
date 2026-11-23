@@ -983,26 +983,37 @@ public class Application extends ContextWrapper
         return h.regionMatches(true, 0, r, 0, r.length()) ? "/" + h.substring(r.length()) : host;
     }
 
-    private android.content.pm.ApplicationInfo appFacingFor, appFacing;
+    /** The runtime's record and the copy the app was given for it, published
+     *  together so a reader never pairs one with the other's. */
+    private static final class AppFacing {
+        final android.content.pm.ApplicationInfo real, facing;
+        AppFacing(android.content.pm.ApplicationInfo real, android.content.pm.ApplicationInfo facing) {
+            this.real = real;
+            this.facing = facing;
+        }
+    }
+    private volatile AppFacing appFacing;
 
     /** Win.apk: what the app itself is told. The record the runtime's own loaders
      *  use keeps host paths; the app's copy names the split APKs by their Android
      *  paths, as getPackageCodePath() names the base. Unity builds each split's
      *  assets path from the code path's folder and file name, so it finds a split
-     *  in its APK index only if it was registered under that same spelling. */
+     *  in its APK index only if it was registered under that same spelling.
+     *  No lock: this is hot, and the Application's monitor is the app's to take
+     *  (a thread holding it while waiting on a caller of this would deadlock).
+     *  Two threads may each build an equal copy; the last write wins. */
     private android.content.pm.ApplicationInfo macapkAppFacingInfo() {
         android.content.pm.ApplicationInfo real = macapkApplicationInfoReal();
         if (real == null || real.splitSourceDirs == null) return real;
-        synchronized (this) {
-            if (appFacingFor != real) {
-                android.content.pm.ApplicationInfo copy = new android.content.pm.ApplicationInfo(real);
-                copy.splitSourceDirs = macapkAndroidPaths(real.splitSourceDirs);
-                copy.splitPublicSourceDirs = macapkAndroidPaths(real.splitPublicSourceDirs);
-                appFacing = copy;
-                appFacingFor = real;
-            }
-            return appFacing;
+        AppFacing f = appFacing;
+        if (f == null || f.real != real) {
+            android.content.pm.ApplicationInfo copy = new android.content.pm.ApplicationInfo(real);
+            copy.splitSourceDirs = macapkAndroidPaths(real.splitSourceDirs);
+            copy.splitPublicSourceDirs = macapkAndroidPaths(real.splitPublicSourceDirs);
+            f = new AppFacing(real, copy);
+            appFacing = f;
         }
+        return f.facing;
     }
 
     private static String[] macapkAndroidPaths(String[] host) {
