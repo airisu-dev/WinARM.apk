@@ -438,6 +438,22 @@ void test_plan() {
         X18Plan p = plan_x18_sites(f.data(), f.size());
         check(p.ok && p.outside_functions == 1 && p.risky(), "plan: x18 outside the unwind tables");
     }
+    // Code outside the tables, a run of valid words ended by zero padding: read as a function of its own.
+    {
+        std::vector<uint32_t> text = {kNop, kRet};
+        for (int i = 0; i < 4; ++i) text.push_back(kNop);
+        text.push_back(kX18Mov);
+        for (int i = 0; i < 4; ++i) text.push_back(kNop);
+        text.push_back(kRet);
+        text.push_back(0);
+        auto f = make_elf(text, {{0, 2}});
+        check_one_site(plan_x18_sites(f.data(), f.size()), 6, "plan: code outside the unwind tables");
+        // The same word in a run cut short by a reserved word on each side stays refused.
+        std::vector<uint32_t> cut = {kNop, kRet, 0, kNop, kX18Mov, kNop, 0, kRet};
+        auto g = make_elf(cut, {{0, 2}});
+        X18Plan p = plan_x18_sites(g.data(), g.size());
+        check(p.ok && p.outside_functions == 1 && p.risky(), "plan: a short run outside the tables stays refused");
+    }
     // x18 only in a table after the functions: nothing to rewrite, when the functions cover the code.
     {
         std::vector<uint32_t> text(8, kNop);

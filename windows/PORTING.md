@@ -79,6 +79,13 @@ or nothing and patches only words that are code: inside `.eh_frame` functions, n
 read as a literal, and reachable (a function with an indirect `br` takes every block
 start as reachable). A data word right after an unconditional branch in such a
 function is told from code only by its block being plausible code.
+Words naming x18 outside every `.eh_frame` function that are not text make a library
+unloadable unless the code outside the tables is read too (Unity's `libunity.so` carries
+physics and math code built without unwind info). Then each run of valid words between the
+ranges (no reserved word, no two printable-ASCII words in a row), cut where a call lands
+and at a frame-making first word after `ret`, `b` or `br`, is a function of its own, read
+as one with an indirect `br`; it is kept only if that settles every word. A function that
+is a call target is not joined to the functions that branch to it (a tail call).
 A library with no x18 instruction in its `.eh_frame` functions, whose ranges cover 80% or
 more of its code, is loaded unchanged: what names x18 outside them is a table in `.text`
 (OpenSSL's `ecp_nistz256_precomputed`, SHA-256 constants), and OpenSSL's own assembly
