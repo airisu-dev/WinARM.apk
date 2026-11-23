@@ -210,7 +210,8 @@ with a drive-letter path it `stat`s the entry as a plain file, so
   code (not at a `svc`) is not redirected, since it may hold the DLL's lock.
 - A per-thread Choreographer is driven by a 60 Hz timer through
   `NativeLooper.scheduleVsync`/`takeVsync` (`host/native_looper.cpp`); Unity's
-  "UnityChoreographer" thread paces `UnityMain` with it.
+  "UnityChoreographer" thread paces `UnityMain` with it. `/proc/cpuinfo` is
+  synthesized (`stdio.cpp`; Unity counts its cores from it).
 - On a GPU, GL frames, the view tree and SurfaceView frames reach the window as
   DirectComposition layers (`host/gl/gl_present.h`); without one (WARP,
   SwiftShader) or with "Enable GPU rendering" off, the window is painted from a
