@@ -11,6 +11,12 @@
 #include <cstring>
 #include <unordered_set>
 
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#undef near  // the legacy pointer keyword of windef.h; this file names a directory "near"
+
 namespace winapk {
 
 struct GuestLibrary {
@@ -57,11 +63,31 @@ std::string file_name_of(const std::string& name) {
 // ANSI code page on Windows.
 std::filesystem::path utf8_path(const std::string& s) { return std::filesystem::u8path(s); }
 
+// A path near MAX_PATH in its long-path (\\?\) form. This process has no
+// longPathAware manifest, and an app's library directory
+// (data\app\~~<random>==\<package>-<random>==\lib\arm64) under a long user-data
+// folder is past 260 characters for a library with a long name, where the plain
+// form reads as "not found".
+std::filesystem::path long_path(const std::filesystem::path& p) {
+    const std::wstring& w = p.native();
+    if (w.size() < MAX_PATH - 12 || w.rfind(L"\\\\?\\", 0) == 0) return p;
+    const DWORD n = GetFullPathNameW(w.c_str(), 0, nullptr, nullptr);
+    if (n == 0) return p;
+    std::wstring full(n, L'\0');
+    const DWORD m = GetFullPathNameW(w.c_str(), n, &full[0], nullptr);
+    if (m == 0 || m >= n) return p;
+    full.resize(m);
+    if (full.rfind(L"\\\\", 0) == 0) return std::filesystem::path(L"\\\\?\\UNC\\" + full.substr(2));
+    return std::filesystem::path(L"\\\\?\\" + full);
+}
+
 // A library's path as an app gives it to dlopen or System.load: a host path, or
 // one of Android's own ("/data/user/0/<package>/files/libx.so" for a library the
 // app unpacked, "/data/app/.../lib/x86_64/libx.so" for what findLibrary answers),
 // which names a host file as it does for open() (bionic/paths.cpp).
-std::filesystem::path guest_path(const std::string& s) { return std::filesystem::path(android_host_path(s.c_str())); }
+std::filesystem::path guest_path(const std::string& s) {
+    return long_path(std::filesystem::path(android_host_path(s.c_str())));
+}
 
 std::string machine_name(uint16_t machine) {
     switch (machine) {
@@ -127,14 +153,16 @@ std::filesystem::path GuestLinker::locate(const std::string& name, const std::fi
     }
     const std::filesystem::path file = utf8_path(name);
     for (const auto& dir : config_.search_paths) {
-        if (std::filesystem::is_regular_file(dir / file, ec)) return dir / file;
+        if (std::filesystem::is_regular_file(long_path(dir / file), ec)) return long_path(dir / file);
     }
-    if (!near.empty() && std::filesystem::is_regular_file(near / file, ec)) return near / file;
+    if (!near.empty() && std::filesystem::is_regular_file(long_path(near / file), ec)) {
+        return long_path(near / file);
+    }
     // An app's libraries find each other by bare name: on Android they share
     // the app namespace, whose search path is the app's library directory.
     for (const auto& l : libs_) {
         const std::filesystem::path dir = utf8_path(l->file).parent_path();
-        if (!dir.empty() && std::filesystem::is_regular_file(dir / file, ec)) return dir / file;
+        if (!dir.empty() && std::filesystem::is_regular_file(long_path(dir / file), ec)) return long_path(dir / file);
     }
     return {};
 }
@@ -243,6 +271,7 @@ GuestLibrary* GuestLinker::open(const std::string& requested, int flags, std::st
         auto lib = std::make_unique<GuestLibrary>();
         lib->path = path;
         lib->file = path.u8string();
+        if (lib->file.rfind("\\\\?\\", 0) == 0) lib->file.erase(0, 4);
         lib->name = img->soname().empty() ? file_name_of(lib->file) : img->soname();
         lib->image = std::move(img);
         fresh.push_back(std::move(lib));
