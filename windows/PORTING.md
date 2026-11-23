@@ -112,6 +112,12 @@ the page distance is the same as in the file.
 `WINAPK_ARM64_X18_REWRITE=0` refuses such a library instead, and
 `WINAPK_ARM64_ALLOW_X18=1` loads it unchanged, for investigation.
 
+D7. **A closing window unmaps no guest library.** The app's teardown (onDestroy, then the JVM's class unloading) can dlclose
+libunity.so while its render and worker threads still run in it, and a thread that returns into the unmapped image ended
+the process with 0xC0000005 instead of 0 (no crash line: the fault was in memory no module holds). From the first
+close request `GuestLinker::retain_libraries()` makes dlclose drop its reference and nothing more: no finalizers, no
+unmapping. The process ends within the teardown cap anyway, and Android does not unmap at exit either.
+
 ## 4. Technical findings
 
 ### Loader and ABI

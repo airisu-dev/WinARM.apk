@@ -43,6 +43,7 @@
 #include "native_window.h"
 #include "win32_window.h"
 #include "winapk/arm64_guest.h"
+#include "winapk/linker.h"
 #include "winapk/mini_bionic.h"
 
 namespace winapk::host {
@@ -454,6 +455,7 @@ public:
     // Windows session too). See close_thread.
     void close_requested() override {
         if (g_closing.exchange(true)) end_close("asked to close again");  // no second wait
+        winapk::GuestLinker::retain_libraries();  // the app's teardown may dlclose with its threads still running
         HANDLE watchdog = CreateThread(nullptr, 0, close_watchdog, nullptr, 0, nullptr);
         HANDLE teardown = watchdog ? CreateThread(nullptr, 0, close_thread, nullptr, 0, nullptr) : nullptr;
         if (!teardown) end_close("no thread for the app's teardown");
