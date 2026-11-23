@@ -768,7 +768,10 @@ under `runtime/`):
   owner) reports the view's size and gets `surfaceChanged` for it, as AOSP
   always does. Apps that start their camera preview only after that
   `surfaceChanged` waited forever. `MACAPK_SV_OVERSIZE_HOLDER=0` turns it off.
-  Not Windows-specific.
+  A tick of a SurfaceView with no renderer yet also withholds the host's frame
+  (`NativeCocoa.beginWithheldTick`), so the view's empty pbuffer is not shown:
+  a native engine (Unity) that renders into the window itself and is quiet for
+  half a second had its last frame replaced by black. Not Windows-specific.
 - `runtime/java/android/webkit/MacApkWebViewBridge.java` and `WebView.java`:
   `macapkWantsIntercept` / `macapkInterceptRequest`, through which an engine
   that can hold a request open (`windows/host/native_webview.cpp`, WebView2's
