@@ -295,6 +295,21 @@ int main() {
     exact("plain unc none", winapk::plain_path(L"\\\\srv\\share\\x.so"), L"\\\\srv\\share\\x.so");
     exact("plain empty", winapk::plain_path(L""), L"");
 
+    // A path of 248 characters or more is made absolute and prefixed once; one already in extended or device form
+    // is never wrapped again.
+    const std::wstring tail = L"\\" + std::wstring(260, L'x');
+    exact("long short", winapk::long_path_form(L"C:\\a"), L"C:\\a");
+    exact("long drive", winapk::long_path_form(L"C:\\a" + tail), L"\\\\?\\C:\\a" + tail);
+    exact("long unc", winapk::long_path_form(L"\\\\srv\\share" + tail), L"\\\\?\\UNC\\srv\\share" + tail);
+    exact("long prefixed", winapk::long_path_form(L"\\\\?\\C:\\a" + tail), L"\\\\?\\C:\\a" + tail);
+    exact("long prefixed unc", winapk::long_path_form(L"\\\\?\\UNC\\srv\\share" + tail),
+          L"\\\\?\\UNC\\srv\\share" + tail);
+    exact("long device", winapk::long_path_form(L"\\\\.\\dev" + tail), L"\\\\.\\dev" + tail);
+    exact("long slash prefix", winapk::long_path_form(L"//?/C:/a" + tail), L"\\\\?\\C:\\a" + tail);
+    exact("long slash device", winapk::long_path_form(L"//./dev" + tail), L"\\\\.\\dev" + tail);
+    exact("short slash prefix", winapk::long_path_form(L"//?/C:/a"), L"\\\\?\\C:\\a");
+    exact("prefixed keeps slash", winapk::long_path_form(L"\\\\?\\C:\\a/b"), L"\\\\?\\C:\\a/b");
+
     listing_round_trip();
     long_path_reported();
 

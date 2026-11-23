@@ -69,16 +69,7 @@ std::filesystem::path utf8_path(const std::string& s) { return std::filesystem::
 // folder is past 260 characters for a library with a long name, where the plain
 // form reads as "not found".
 std::filesystem::path long_path(const std::filesystem::path& p) {
-    const std::wstring& w = p.native();
-    if (w.size() < MAX_PATH - 12 || w.rfind(L"\\\\?\\", 0) == 0) return p;
-    const DWORD n = GetFullPathNameW(w.c_str(), 0, nullptr, nullptr);
-    if (n == 0) return p;
-    std::wstring full(n, L'\0');
-    const DWORD m = GetFullPathNameW(w.c_str(), n, &full[0], nullptr);
-    if (m == 0 || m >= n) return p;
-    full.resize(m);
-    if (full.rfind(L"\\\\", 0) == 0) return std::filesystem::path(L"\\\\?\\UNC\\" + full.substr(2));
-    return std::filesystem::path(L"\\\\?\\" + full);
+    return std::filesystem::path(long_path_form(p.native()));
 }
 
 // A library's path as an app gives it to dlopen or System.load: a host path, or

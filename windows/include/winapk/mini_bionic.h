@@ -70,6 +70,11 @@ std::wstring android_file_name(std::wstring host_name);
 // A Win32 path without its extended-length prefix, the form a guest compares and prints: "\\?\C:\x" is
 // "C:\x" and "\\?\UNC\srv\share\x" is "\\srv\share\x". Any other path comes back as it is.
 std::wstring plain_path(std::wstring path);
+// The opposite, for opening: a path near MAX_PATH as an absolute extended-length path (a drive path after the
+// prefix, "UNC" and the server for a UNC path), since this process has no longPathAware manifest. A path already
+// in extended or device form (a "?" or "." between two slashes of either kind) is not wrapped again; a short
+// path comes back as it is.
+std::wstring long_path_form(const std::wstring& path);
 
 // The host file behind a /proc path that is a real file (/proc/meminfo,
 // /proc/self/cmdline and /proc/<pid>/cmdline, which Boot writes under

@@ -244,16 +244,7 @@ std::wstring host_path_short(const char* p) {
 // libunity report "Not enough storage space to install required resources".
 std::wstring host_path(const char* p) {
     std::wstring w = host_path_short(p);
-    const std::wstring prefix = {L'\\', L'\\', L'?', L'\\'};
-    if (w.size() < MAX_PATH - 12 || w.rfind(prefix, 0) == 0 || w == L"NUL") return w;
-    const DWORD n = GetFullPathNameW(w.c_str(), 0, nullptr, nullptr);
-    if (n == 0) return w;
-    std::wstring full(n, L'\0');
-    const DWORD m = GetFullPathNameW(w.c_str(), n, &full[0], nullptr);
-    if (m == 0 || m >= n) return w;
-    full.resize(m);
-    if (full.compare(0, 2, L"\\\\") == 0) return prefix + L"UNC" + full.substr(1);
-    return prefix + full;
+    return w == L"NUL" ? w : winapk::long_path_form(w);
 }
 
 }  // namespace winapk::bionic
@@ -270,6 +261,28 @@ void set_app_data(const char* package, const char* host_dir) {
     bionic::g_app_data_dir = bionic::trimmed(bionic::to_wide(host_dir, host_dir ? std::strlen(host_dir) : 0));
 }
 std::wstring android_host_path(const char* path) { return bionic::host_path_short(path); }
+std::wstring long_path_form(const std::wstring& w) {
+    const auto slash = [](wchar_t c) { return c == L'\\' || c == L'/'; };
+    // Already in extended or device form (\\?\, \\.\, either slash): wrapped again it would name "\\?\UNC\?\...".
+    // A '/' is a separator only before the prefix is read, so a prefix written with '/' is made all '\'.
+    if (w.size() >= 4 && slash(w[0]) && slash(w[1]) && (w[2] == L'?' || w[2] == L'.') && slash(w[3])) {
+        if (w.find(L'/') >= 4) return w;
+        std::wstring p = w;
+        for (wchar_t& c : p) {
+            if (c == L'/') c = L'\\';
+        }
+        return p;
+    }
+    if (w.size() < MAX_PATH - 12) return w;
+    const DWORD n = GetFullPathNameW(w.c_str(), 0, nullptr, nullptr);
+    if (n == 0) return w;
+    std::wstring full(n, L'\0');
+    const DWORD m = GetFullPathNameW(w.c_str(), n, &full[0], nullptr);
+    if (m == 0 || m >= n) return w;
+    full.resize(m);
+    if (full.compare(0, 2, L"\\\\") == 0) return L"\\\\?\\UNC" + full.substr(1);
+    return L"\\\\?\\" + full;
+}
 std::wstring plain_path(std::wstring p) {
     if (p.compare(0, 8, L"\\\\?\\UNC\\") == 0) {
         p.replace(0, 8, L"\\\\");
