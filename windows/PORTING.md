@@ -84,7 +84,9 @@ unloadable unless the code outside the tables is read too (Unity's `libunity.so`
 physics and math code built without unwind info). Then each run of valid words between the
 ranges (no reserved word, no two printable-ASCII words in a row), cut where a call lands
 and at a frame-making first word after `ret`, `b` or `br`, is a function of its own, read
-as one with an indirect `br`; it is kept only if that settles every word. A function that
+as one with an indirect `br`, except that a word after its last `ret`, `b` or `br` is not code (it may
+be a constant loaded through `adrp`) unless the run goes on into a function the tables describe or into
+words that only look like a string; it is kept only if that settles every word. A function that
 is a call target is not joined to the functions that branch to it (a tail call).
 A library with no x18 instruction in its `.eh_frame` functions, whose ranges cover 80% or
 more of its code, is loaded unchanged only if no code outside them that a call reaches writes x18

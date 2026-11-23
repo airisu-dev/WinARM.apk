@@ -815,9 +815,24 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
                             term_of[k] = ends_block(w[k]) ? k : (k + 1 < n ? term_of[k + 1] : n);
                         }
                     }
-                    // A run outside the tables may end where a function with tables starts, in the middle of a block.
+                    // A block with no terminator is not told from constants after the last return (loaded through
+                    // adrp, not a literal load), unless the function runs on: into one that the tables describe, or
+                    // into words that only look like a string (three loads of the `ldrb w, [x, w]` kind are
+                    // printable ASCII), where the run was cut.
+                    bool runs_on = false;
+                    if (no_tables) {
+                        const size_t j = function_at(f.hi);
+                        runs_on = j != fns.size() && fns[j].lo == f.hi && !unwound.count(f.hi);
+                        if (!runs_on && f.hi + 4 <= e.vaddr + e.size) {
+                            uint32_t next;
+                            std::memcpy(&next, file + e.offset + (f.hi - e.vaddr), 4);
+                            runs_on = std::all_of(reinterpret_cast<const uint8_t*>(&next),
+                                                  reinterpret_cast<const uint8_t*>(&next) + 4,
+                                                  [](uint8_t c) { return c >= 0x20 && c <= 0x7e; });
+                        }
+                    }
                     const size_t last = term_of[i] < n ? term_of[i] : n - 1;
-                    const bool plausible = (term_of[i] < n || no_tables) && bad_before[last + 1] == bad_before[start_of[i]];
+                    const bool plausible = (term_of[i] < n || runs_on) && bad_before[last + 1] == bad_before[start_of[i]];
                     if (!plausible) {
                         ++plan.implausible;
                         suspect_word = true;

@@ -454,6 +454,15 @@ void test_plan() {
         X18Plan p = plan_x18_sites(g.data(), g.size());
         check(p.ok && p.outside_functions == 1 && p.risky(), "plan: a short run outside the tables stays refused");
     }
+    // A word after the last terminator of code outside the tables may be a constant loaded through adrp: refused,
+    // unless the run goes on into a function the tables describe.
+    {
+        auto f = make_elf({kNop, kRet, kNop, kNop, kRet, kX18Mov, kNop, kNop, 0}, {{0, 2}});
+        const X18Plan p = plan_x18_sites(f.data(), f.size());
+        check(p.risky() && p.sites.empty(), "plan: x18 after the last return outside the tables is refused");
+        auto g = make_elf({kNop, kRet, kNop, kNop, kNop, kX18Mov, kNop, kRet}, {{0, 2}, {6, 2}});
+        check_one_site(plan_x18_sites(g.data(), g.size()), 5, "plan: a run that goes on into a function with tables");
+    }
     // x18 only in a table after the functions: nothing to rewrite, when the functions cover the code.
     {
         std::vector<uint32_t> text(8, kNop);
