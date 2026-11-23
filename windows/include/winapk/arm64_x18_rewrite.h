@@ -480,10 +480,10 @@ inline std::vector<uint64_t> x18_call_targets(const uint8_t* file, const ElfCode
 
 // Code a library keeps outside its unwind tables (a statically linked library built without them: Unity's physics
 // and math code) is taken as functions of its own: the runs of words between the .eh_frame ranges that contain no
-// reserved word (zero padding, the udf space) and no string (two printable-ASCII words in a row; one such word is
-// an instruction now and then). A run is cut where a call lands, which is a function start, and at a frame-making
-// first word after a branch that ends a block. Each is read like a
-// function with an indirect branch, since more functions may lie in one run and nothing says where they start.
+// reserved word (zero padding, the udf space) and no string (three printable-ASCII words in a row; one or two such
+// words are instructions now and then). A run is cut where a call lands, which is a function start, and at a
+// frame-making first word after a branch that ends a block. Each is read like a function with an indirect branch, since
+// more functions may lie in one run and nothing says where they start.
 inline std::vector<FdeRange> x18_unwound_gaps(const uint8_t* file, const ElfCode& code,
                                               const std::vector<uint64_t>& calls) {
     constexpr size_t kMinWords = 4;
@@ -508,7 +508,14 @@ inline std::vector<FdeRange> x18_unwound_gaps(const uint8_t* file, const ElfCode
             uint32_t w;
             std::memcpy(&w, file + e.offset + at, 4);
             const bool reserved = ((w >> 25) & 0xf) == 0 && (w >> 31) == 0;
-            const bool text = printable(at) && ((at >= 4 && printable(at - 4)) || (at + 8 <= e.size && printable(at + 4)));
+            // Two printable words in a row are two instructions now and then (`ldrb w17, [x9, x17]` and
+            // `ldrb w18, [x9, x18]` are "1iq8" and "2ir8"), so a string is three or more.
+            size_t printable_run = printable(at) ? 1 : 0;
+            for (uint64_t k = 1; printable_run && k < 3 && at >= 4 * k && printable(at - 4 * k); ++k) ++printable_run;
+            for (uint64_t k = 1; printable_run && k < 3 && at + 4 * k + 4 <= e.size && printable(at + 4 * k); ++k) {
+                ++printable_run;
+            }
+            const bool text = printable_run >= 3;
             if (in_functions(code.functions, e.vaddr + at) || reserved || text) {
                 close(at);
             } else {
