@@ -1001,10 +1001,14 @@ public class Application extends ContextWrapper
      *  in its APK index only if it was registered under that same spelling.
      *  No lock: this is hot, and the Application's monitor is the app's to take
      *  (a thread holding it while waiting on a caller of this would deadlock).
-     *  Two threads may each build an equal copy; the last write wins. */
+     *  Two threads may each build an equal copy; the last write wins.
+     *  One rule whatever the install (splits or none): the app always gets the
+     *  same copy for as long as the runtime's record is the same object, so its
+     *  identity is stable, and what the app writes into it never reaches the
+     *  runtime's record. A null split list stays null. */
     private android.content.pm.ApplicationInfo macapkAppFacingInfo() {
         android.content.pm.ApplicationInfo real = macapkApplicationInfoReal();
-        if (real == null || real.splitSourceDirs == null) return real;
+        if (real == null) return null;
         AppFacing f = appFacing;
         if (f == null || f.real != real) {
             android.content.pm.ApplicationInfo copy = new android.content.pm.ApplicationInfo(real);

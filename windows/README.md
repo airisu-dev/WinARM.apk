@@ -935,7 +935,9 @@ under `runtime/`):
   The record `getApplicationInfo()` hands the app (not the runtime's own loaders)
   names the split APKs (`splitSourceDirs`, `splitPublicSourceDirs`) by their Android
   paths too: Unity builds a split's `<path>/assets/...` from the code path's folder
-  and indexes it only under that spelling.
+  and indexes it only under that spelling. That record is one cached copy per
+  runtime record, with or without splits: its identity is stable and what the app
+  writes into it does not reach the runtime's own record.
 - `runtime/java/android/app/Application.java`, `Activity.java` and
   `com/macapk/loader/ActivityHost.java`: `onActivityPreCreated` goes out before
   `onCreate`, `onActivityCreated` from `Activity.onCreate` (or after it when
