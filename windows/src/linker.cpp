@@ -270,8 +270,7 @@ GuestLibrary* GuestLinker::open(const std::string& requested, int flags, std::st
         }
         auto lib = std::make_unique<GuestLibrary>();
         lib->path = path;
-        lib->file = path.u8string();
-        if (lib->file.rfind("\\\\?\\", 0) == 0) lib->file.erase(0, 4);
+        lib->file = std::filesystem::path(plain_path(path.native())).u8string();
         lib->name = img->soname().empty() ? file_name_of(lib->file) : img->soname();
         lib->image = std::move(img);
         fresh.push_back(std::move(lib));

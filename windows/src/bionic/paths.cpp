@@ -270,6 +270,14 @@ void set_app_data(const char* package, const char* host_dir) {
     bionic::g_app_data_dir = bionic::trimmed(bionic::to_wide(host_dir, host_dir ? std::strlen(host_dir) : 0));
 }
 std::wstring android_host_path(const char* path) { return bionic::host_path_short(path); }
+std::wstring plain_path(std::wstring p) {
+    if (p.compare(0, 8, L"\\\\?\\UNC\\") == 0) {
+        p.replace(0, 8, L"\\\\");
+    } else if (p.compare(0, 4, L"\\\\?\\") == 0) {
+        p.erase(0, 4);
+    }
+    return p;
+}
 std::wstring android_file_name(std::wstring host_name) {
     if (!host_name.empty()) bionic::android_name(&host_name[0]);
     return host_name;

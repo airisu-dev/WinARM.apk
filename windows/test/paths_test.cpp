@@ -39,6 +39,13 @@ void check(const char* what, const std::wstring& got, const std::wstring& want) 
     std::fprintf(stderr, "FAIL %s: got \"%ls\" want \"%ls\"\n", what, got.c_str(), want.c_str());
 }
 
+// Compare as they are: the extended-length prefix tells '\' from '/'.
+void exact(const char* what, const std::wstring& got, const std::wstring& want) {
+    if (got == want) return;
+    ++g_failed;
+    std::fprintf(stderr, "FAIL %s: got \"%ls\" want \"%ls\"\n", what, got.c_str(), want.c_str());
+}
+
 std::wstring host(const char* p) { return winapk::android_host_path(p); }
 
 // The shim's own calls on real files, under a scratch Android root in %TEMP%:
@@ -239,6 +246,13 @@ int main() {
     check("inner private dot", winapk::android_file_name(L"a\xF02E" L"b"), L"a\xF02E" L"b");
     check("listed plain", winapk::android_file_name(L"plain.txt"), L"plain.txt");
     check("listed dot dot", winapk::android_file_name(L".."), L"..");
+
+    // The extended-length prefix is not part of a path a guest sees.
+    exact("plain drive", winapk::plain_path(L"\\\\?\\C:\\d\\x.so"), L"C:\\d\\x.so");
+    exact("plain unc", winapk::plain_path(L"\\\\?\\UNC\\srv\\share\\x.so"), L"\\\\srv\\share\\x.so");
+    exact("plain none", winapk::plain_path(L"C:\\d\\x.so"), L"C:\\d\\x.so");
+    exact("plain unc none", winapk::plain_path(L"\\\\srv\\share\\x.so"), L"\\\\srv\\share\\x.so");
+    exact("plain empty", winapk::plain_path(L""), L"");
 
     listing_round_trip();
 

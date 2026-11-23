@@ -67,6 +67,9 @@ std::wstring android_host_path(const char* path);
 // characters, a final dot or space) are stored as U+F000 + the character
 // (paths.cpp), and this turns them back.
 std::wstring android_file_name(std::wstring host_name);
+// A Win32 path without its extended-length prefix, the form a guest compares and prints: "\\?\C:\x" is
+// "C:\x" and "\\?\UNC\srv\share\x" is "\\srv\share\x". Any other path comes back as it is.
+std::wstring plain_path(std::wstring path);
 
 // The host file behind a /proc path that is a real file (/proc/meminfo,
 // /proc/self/cmdline and /proc/<pid>/cmdline, which Boot writes under
