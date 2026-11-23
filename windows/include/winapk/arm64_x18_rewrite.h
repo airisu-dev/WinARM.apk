@@ -544,10 +544,20 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
     ElfCode code = elf_code(file, size);
     if (!code.ok || code.functions.empty()) return plan;
     plan.ok = true;
-    const std::vector<uint64_t> calls = x18_call_targets(file, code);
+    // Built when a reading of the code outside the tables or a function group first needs it: a library with no x18
+    // word that is not plainly code never does, and a large one pays an entry per call and a sort for it.
+    std::vector<uint64_t> calls;
+    bool have_calls = false;
+    auto call_targets = [&]() -> const std::vector<uint64_t>& {
+        if (!have_calls) {
+            calls = x18_call_targets(file, code);
+            have_calls = true;
+        }
+        return calls;
+    };
     std::set<uint64_t> unwound;  // the starts of the ranges that are not in .eh_frame
     if (read_unwound) {
-        for (const FdeRange& g : x18_unwound_gaps(file, code, calls)) {
+        for (const FdeRange& g : x18_unwound_gaps(file, code, call_targets())) {
             code.functions.push_back(g);
             unwound.insert(g.lo);
         }
@@ -584,7 +594,10 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
         while (parent[x] != x) x = parent[x] = parent[parent[x]];
         return x;
     };
-    auto is_call_target = [&](uint64_t va) { return std::binary_search(calls.begin(), calls.end(), va); };
+    auto is_call_target = [&](uint64_t va) {
+        const std::vector<uint64_t>& c = call_targets();
+        return std::binary_search(c.begin(), c.end(), va);
+    };
     auto function_at = [&](uint64_t va) {
         size_t lo = 0, hi = fns.size();
         while (lo < hi) {
