@@ -85,6 +85,9 @@ constexpr int kEPERM = 1, kENOENT = 2, kEINTR = 4, kEIO = 5, kEBADF = 9, kEAGAIN
 // thread) the way tgkill does: delivered now if it is this thread, injected
 // into the other one otherwise. Returns 0 or a Linux errno.
 int signal_send(uint32_t tid, int sig);
+// WaitOnAddress, noting the address the calling thread sleeps on so that a signal injected into it wakes it (a plain
+// WaitOnAddress cannot be woken but by a write the waiter watches). Every wait on guest memory goes through it.
+bool wait_on_address(void* address, void* compare, size_t size, unsigned long ms);
 // The calling thread's blocked set, for sigsetjmp/siglongjmp (setjmp.cpp).
 uint64_t signal_mask_of_current_thread();
 void signal_set_mask_of_current_thread(uint64_t mask);
@@ -116,6 +119,8 @@ std::string format_va(const char* fmt, SysVVaList* va);
 // paths.cpp: the host path for a guest path (Android's absolute paths are
 // mapped under the android root; see paths.cpp).
 std::wstring host_path(const char* guest_path);
+// The same without the long-path form (the \\?\ prefix) that host_path gives a path near MAX_PATH.
+std::wstring host_path_short(const char* guest_path);
 // Whether host_path() maps `guest_path` as an Android path; a host path it
 // leaves as it is.
 bool is_android_path(const char* guest_path);

@@ -40,7 +40,7 @@ std::atomic<int32_t>* word(void* p, size_t index) {
 // Waits while *w == expected, up to ms (INFINITE for no limit). Returns false
 // on timeout.
 bool futex_wait(std::atomic<int32_t>* w, int32_t expected, DWORD ms) {
-    if (WaitOnAddress(w, &expected, sizeof(expected), ms)) return true;
+    if (wait_on_address(w, &expected, sizeof(expected), ms)) return true;
     return GetLastError() != ERROR_TIMEOUT;
 }
 void futex_wake_one(std::atomic<int32_t>* w) { WakeByAddressSingle(w); }

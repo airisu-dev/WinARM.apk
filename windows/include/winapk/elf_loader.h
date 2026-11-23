@@ -203,4 +203,8 @@ private:
     bool initialized_ = false;
 };
 
+// Where the virtual x18's two per-thread slots are in the TEB (arm64_x18_rewrite.h), once a library was rewritten
+// for it; false before. A signal handler runs guest code that uses the same slots, so it saves and restores them.
+bool x18_slot_offsets(uint32_t* value, uint32_t* scratch);
+
 }  // namespace winapk

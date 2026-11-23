@@ -18,6 +18,7 @@
 #include <iterator>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <windows.h>
 
@@ -35,6 +36,13 @@ std::wstring fold(std::wstring s) {
 
 void check(const char* what, const std::wstring& got, const std::wstring& want) {
     if (fold(got) == fold(want)) return;
+    ++g_failed;
+    std::fprintf(stderr, "FAIL %s: got \"%ls\" want \"%ls\"\n", what, got.c_str(), want.c_str());
+}
+
+// Compare as they are: the extended-length prefix tells '\' from '/'.
+void exact(const char* what, const std::wstring& got, const std::wstring& want) {
+    if (got == want) return;
     ++g_failed;
     std::fprintf(stderr, "FAIL %s: got \"%ls\" want \"%ls\"\n", what, got.c_str(), want.c_str());
 }
@@ -140,6 +148,46 @@ void listing_round_trip() {
     }
 }
 
+// realpath and readlink of a file past MAX_PATH answer with the plain path: the extended-length prefix host_path
+// opens it with must not reach the guest.
+void long_path_reported() {
+    const auto g_realpath = shim<char* (WINAPK_GUEST_ABI*)(const char*, char*)>("realpath");
+    wchar_t temp[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp);
+    const std::wstring base = std::wstring(temp) + L"winapk-paths-long-" + std::to_wstring(GetCurrentProcessId());
+    std::wstring dir = L"\\\\?\\" + base;
+    CreateDirectoryW(dir.c_str(), nullptr);
+    std::vector<std::wstring> made{dir};
+    while (dir.size() < 300) {
+        dir += L"\\" + std::wstring(40, L'd');
+        CreateDirectoryW(dir.c_str(), nullptr);
+        made.push_back(dir);
+    }
+    const std::wstring file = dir + L"\\f.txt";
+    HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        ++g_failed;
+        std::fprintf(stderr, "FAIL long path: cannot create the file\n");
+    } else {
+        CloseHandle(h);
+        const std::wstring plain = file.substr(4);
+        char guest[2048];
+        WideCharToMultiByte(CP_UTF8, 0, plain.c_str(), -1, guest, sizeof guest, nullptr, nullptr);
+        char out[4096];
+        char* r = g_realpath(guest, out);
+        if (!r) {
+            ++g_failed;
+            std::fprintf(stderr, "FAIL realpath of a long path failed\n");
+        } else {
+            wchar_t back[2048];
+            MultiByteToWideChar(CP_UTF8, 0, r, -1, back, 2048);
+            exact("realpath long", back, plain);
+        }
+        DeleteFileW(file.c_str());
+    }
+    for (size_t i = made.size(); i-- > 0;) RemoveDirectoryW(made[i].c_str());
+}
+
 }  // namespace
 
 int main() {
@@ -240,7 +288,30 @@ int main() {
     check("listed plain", winapk::android_file_name(L"plain.txt"), L"plain.txt");
     check("listed dot dot", winapk::android_file_name(L".."), L"..");
 
+    // The extended-length prefix is not part of a path a guest sees.
+    exact("plain drive", winapk::plain_path(L"\\\\?\\C:\\d\\x.so"), L"C:\\d\\x.so");
+    exact("plain unc", winapk::plain_path(L"\\\\?\\UNC\\srv\\share\\x.so"), L"\\\\srv\\share\\x.so");
+    exact("plain none", winapk::plain_path(L"C:\\d\\x.so"), L"C:\\d\\x.so");
+    exact("plain unc none", winapk::plain_path(L"\\\\srv\\share\\x.so"), L"\\\\srv\\share\\x.so");
+    exact("plain empty", winapk::plain_path(L""), L"");
+
+    // A path of 248 characters or more is made absolute and prefixed once; one already in extended or device form
+    // is never wrapped again.
+    const std::wstring tail = L"\\" + std::wstring(260, L'x');
+    exact("long short", winapk::long_path_form(L"C:\\a"), L"C:\\a");
+    exact("long drive", winapk::long_path_form(L"C:\\a" + tail), L"\\\\?\\C:\\a" + tail);
+    exact("long unc", winapk::long_path_form(L"\\\\srv\\share" + tail), L"\\\\?\\UNC\\srv\\share" + tail);
+    exact("long prefixed", winapk::long_path_form(L"\\\\?\\C:\\a" + tail), L"\\\\?\\C:\\a" + tail);
+    exact("long prefixed unc", winapk::long_path_form(L"\\\\?\\UNC\\srv\\share" + tail),
+          L"\\\\?\\UNC\\srv\\share" + tail);
+    exact("long device", winapk::long_path_form(L"\\\\.\\dev" + tail), L"\\\\.\\dev" + tail);
+    exact("long slash prefix", winapk::long_path_form(L"//?/C:/a" + tail), L"\\\\?\\C:\\a" + tail);
+    exact("long slash device", winapk::long_path_form(L"//./dev" + tail), L"\\\\.\\dev" + tail);
+    exact("short slash prefix", winapk::long_path_form(L"//?/C:/a"), L"\\\\?\\C:\\a");
+    exact("prefixed keeps slash", winapk::long_path_form(L"\\\\?\\C:\\a/b"), L"\\\\?\\C:\\a/b");
+
     listing_round_trip();
+    long_path_reported();
 
     if (g_failed == 0) std::fprintf(stderr, "paths_test: all checks passed\n");
 

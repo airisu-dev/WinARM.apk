@@ -438,6 +438,57 @@ void test_plan() {
         X18Plan p = plan_x18_sites(f.data(), f.size());
         check(p.ok && p.outside_functions == 1 && p.risky(), "plan: x18 outside the unwind tables");
     }
+    // Code outside the tables, a run of valid words ended by zero padding: read as a function of its own.
+    {
+        std::vector<uint32_t> text = {kNop, kRet};
+        for (int i = 0; i < 4; ++i) text.push_back(kNop);
+        text.push_back(kX18Mov);
+        for (int i = 0; i < 4; ++i) text.push_back(kNop);
+        text.push_back(kRet);
+        text.push_back(0);
+        auto f = make_elf(text, {{0, 2}});
+        check_one_site(plan_x18_sites(f.data(), f.size()), 6, "plan: code outside the unwind tables");
+        // The same word in a run cut short by a reserved word on each side stays refused.
+        std::vector<uint32_t> cut = {kNop, kRet, 0, kNop, kX18Mov, kNop, 0, kRet};
+        auto g = make_elf(cut, {{0, 2}});
+        X18Plan p = plan_x18_sites(g.data(), g.size());
+        check(p.ok && p.outside_functions == 1 && p.risky(), "plan: a short run outside the tables stays refused");
+    }
+    // A word after the last terminator of code outside the tables may be a constant loaded through adrp: refused,
+    // unless the run goes on into a function the tables describe.
+    {
+        auto f = make_elf({kNop, kRet, kNop, kNop, kRet, kX18Mov, kNop, kNop, 0}, {{0, 2}});
+        const X18Plan p = plan_x18_sites(f.data(), f.size());
+        check(p.risky() && p.sites.empty(), "plan: x18 after the last return outside the tables is refused");
+        auto g = make_elf({kNop, kRet, kNop, kNop, kNop, kX18Mov, kNop, kRet}, {{0, 2}, {6, 2}});
+        check_one_site(plan_x18_sites(g.data(), g.size()), 5, "plan: a run that goes on into a function with tables");
+    }
+    // x18 only in a table after the functions: nothing to rewrite, when the functions cover the code.
+    {
+        std::vector<uint32_t> text(8, kNop);
+        text.push_back(kRet);
+        text.push_back(kX18Mov);
+        auto f = make_elf(text, {{0, 9}});
+        check(x18_data_only(plan_x18_sites(f.data(), f.size())), "plan: x18 in a table outside the functions");
+        auto g = make_elf({kNop, kRet, kX18Mov}, {{0, 2}});
+        check(!x18_data_only(plan_x18_sites(g.data(), g.size())), "plan: too little code covered");
+        auto h = make_elf({kNop, kX18Mov, kRet}, {{0, 3}});
+        check(!x18_data_only(plan_x18_sites(h.data(), h.size())), "plan: a site in a function");
+        check(!x18_data_only(plan_x18_sites(f.data(), 16)), "plan: not an ELF file");
+        // High coverage does not make a library data-only when code outside the tables names x18: it is patched.
+        std::vector<uint32_t> tail(40, kNop);
+        tail.push_back(kRet);
+        tail[5] = 0x94000000 | 36;  // bl to the first word after the function: the code outside is called
+        for (uint32_t w : {kNop, kNop, kX18Mov, kNop, kRet, uint32_t{0}}) tail.push_back(w);
+        auto t = make_elf(tail, {{0, 41}});
+        const X18Plan tp = plan_x18_sites(t.data(), t.size());
+        check(!x18_data_only(tp), "plan: code outside the tables at high coverage is not data");
+        check_one_site(tp, 43, "plan: code outside the tables at high coverage is patched");
+        // The same words that nothing calls are a table of constants kept in .text.
+        tail[5] = kNop;
+        auto u = make_elf(tail, {{0, 41}});
+        check(x18_data_only(plan_x18_sites(u.data(), u.size())), "plan: uncalled code outside the tables is data");
+    }
     // The register an indirect branch through x18 clobbers: one that nothing can still read where the branch may land.
     {
         constexpr uint32_t kBrX18 = 0xd61f0240, kReadX16 = 0xaa1003e0 /* mov x0, x16 */,

@@ -3,77 +3,152 @@
 
 extern "C" void GL_APIENTRY glAlphaFunc(GLenum func, GLfloat ref);
 extern "C" void GL_APIENTRY glAlphaFuncx(GLenum func, GLfixed ref);
+extern "C" void GL_APIENTRY glAlphaFuncxOES(GLenum func, GLfixed ref);
+extern "C" void GL_APIENTRY glBindFramebufferOES(GLenum target, GLuint framebuffer);
+extern "C" void GL_APIENTRY glBindRenderbufferOES(GLenum target, GLuint renderbuffer);
+extern "C" void GL_APIENTRY glBlendEquationOES(GLenum mode);
+extern "C" void GL_APIENTRY glBlendEquationSeparateOES(GLenum modeRGB, GLenum modeAlpha);
+extern "C" void GL_APIENTRY glBlendFuncSeparateOES(GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha);
+extern "C" GLenum GL_APIENTRY glCheckFramebufferStatusOES(GLenum target);
 extern "C" void GL_APIENTRY glClearColorx(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha);
+extern "C" void GL_APIENTRY glClearColorxOES(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha);
+extern "C" void GL_APIENTRY glClearDepthfOES(GLclampf depth);
 extern "C" void GL_APIENTRY glClearDepthx(GLfixed depth);
+extern "C" void GL_APIENTRY glClearDepthxOES(GLfixed depth);
 extern "C" void GL_APIENTRY glClientActiveTexture(GLenum texture);
 extern "C" void GL_APIENTRY glClipPlanef(GLenum p, const GLfloat *eqn);
+extern "C" void GL_APIENTRY glClipPlanefIMG(GLenum p, const GLfloat *eqn);
+extern "C" void GL_APIENTRY glClipPlanefOES(GLenum plane, const GLfloat *equation);
 extern "C" void GL_APIENTRY glClipPlanex(GLenum plane, const GLfixed *equation);
+extern "C" void GL_APIENTRY glClipPlanexIMG(GLenum p, const GLfixed *eqn);
+extern "C" void GL_APIENTRY glClipPlanexOES(GLenum plane, const GLfixed *equation);
 extern "C" void GL_APIENTRY glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha);
 extern "C" void GL_APIENTRY glColor4ub(GLubyte red, GLubyte green, GLubyte blue, GLubyte alpha);
 extern "C" void GL_APIENTRY glColor4x(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha);
+extern "C" void GL_APIENTRY glColor4xOES(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha);
 extern "C" void GL_APIENTRY glColorPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
+extern "C" void GL_APIENTRY glCurrentPaletteMatrixOES(GLuint matrixpaletteindex);
+extern "C" void GL_APIENTRY glDeleteFramebuffersOES(GLsizei n, const GLuint *framebuffers);
+extern "C" void GL_APIENTRY glDeleteRenderbuffersOES(GLsizei n, const GLuint *renderbuffers);
+extern "C" void GL_APIENTRY glDepthRangefOES(GLclampf n, GLclampf f);
 extern "C" void GL_APIENTRY glDepthRangex(GLfixed n, GLfixed f);
+extern "C" void GL_APIENTRY glDepthRangexOES(GLfixed n, GLfixed f);
 extern "C" void GL_APIENTRY glDisableClientState(GLenum array);
+extern "C" void GL_APIENTRY glDrawTexfOES(GLfloat x, GLfloat y, GLfloat z, GLfloat width, GLfloat height);
+extern "C" void GL_APIENTRY glDrawTexfvOES(const GLfloat *coords);
+extern "C" void GL_APIENTRY glDrawTexiOES(GLint x, GLint y, GLint z, GLint width, GLint height);
+extern "C" void GL_APIENTRY glDrawTexivOES(const GLint *coords);
+extern "C" void GL_APIENTRY glDrawTexsOES(GLshort x, GLshort y, GLshort z, GLshort width, GLshort height);
+extern "C" void GL_APIENTRY glDrawTexsvOES(const GLshort *coords);
+extern "C" void GL_APIENTRY glDrawTexxOES(GLfixed x, GLfixed y, GLfixed z, GLfixed width, GLfixed height);
+extern "C" void GL_APIENTRY glDrawTexxvOES(const GLfixed *coords);
 extern "C" void GL_APIENTRY glEnableClientState(GLenum array);
 extern "C" void GL_APIENTRY glFogf(GLenum pname, GLfloat param);
 extern "C" void GL_APIENTRY glFogfv(GLenum pname, const GLfloat *params);
 extern "C" void GL_APIENTRY glFogx(GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glFogxOES(GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glFogxv(GLenum pname, const GLfixed *param);
+extern "C" void GL_APIENTRY glFogxvOES(GLenum pname, const GLfixed *param);
+extern "C" void GL_APIENTRY glFramebufferRenderbufferOES(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
+extern "C" void GL_APIENTRY glFramebufferTexture2DOES(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
 extern "C" void GL_APIENTRY glFrustumf(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f);
+extern "C" void GL_APIENTRY glFrustumfOES(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f);
 extern "C" void GL_APIENTRY glFrustumx(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f);
+extern "C" void GL_APIENTRY glFrustumxOES(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f);
+extern "C" void GL_APIENTRY glGenFramebuffersOES(GLsizei n, GLuint *framebuffers);
+extern "C" void GL_APIENTRY glGenRenderbuffersOES(GLsizei n, GLuint *renderbuffers);
+extern "C" void GL_APIENTRY glGenerateMipmapOES(GLenum target);
 extern "C" void GL_APIENTRY glGetClipPlanef(GLenum plane, GLfloat *equation);
+extern "C" void GL_APIENTRY glGetClipPlanefOES(GLenum plane, GLfloat *equation);
 extern "C" void GL_APIENTRY glGetClipPlanex(GLenum plane, GLfixed *equation);
+extern "C" void GL_APIENTRY glGetClipPlanexOES(GLenum plane, GLfixed *equation);
 extern "C" void GL_APIENTRY glGetFixedv(GLenum pname, GLfixed *data);
+extern "C" void GL_APIENTRY glGetFixedvOES(GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetFramebufferAttachmentParameterivOES(GLenum target, GLenum attachment, GLenum pname, GLint *params);
 extern "C" void GL_APIENTRY glGetLightfv(GLenum light, GLenum pname, GLfloat *params);
 extern "C" void GL_APIENTRY glGetLightxv(GLenum light, GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetLightxvOES(GLenum light, GLenum pname, GLfixed *params);
 extern "C" void GL_APIENTRY glGetMaterialfv(GLenum face, GLenum pname, GLfloat *params);
 extern "C" void GL_APIENTRY glGetMaterialxv(GLenum face, GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetMaterialxvOES(GLenum face, GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetRenderbufferParameterivOES(GLenum target, GLenum pname, GLint *params);
 extern "C" void GL_APIENTRY glGetTexEnvfv(GLenum target, GLenum pname, GLfloat *params);
 extern "C" void GL_APIENTRY glGetTexEnviv(GLenum target, GLenum pname, GLint *params);
 extern "C" void GL_APIENTRY glGetTexEnvxv(GLenum target, GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetTexEnvxvOES(GLenum target, GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetTexGenfvOES(GLenum coord, GLenum pname, GLfloat *params);
+extern "C" void GL_APIENTRY glGetTexGenivOES(GLenum coord, GLenum pname, GLint *params);
+extern "C" void GL_APIENTRY glGetTexGenxvOES(GLenum coord, GLenum pname, GLfixed *params);
 extern "C" void GL_APIENTRY glGetTexParameterxv(GLenum target, GLenum pname, GLfixed *params);
+extern "C" void GL_APIENTRY glGetTexParameterxvOES(GLenum target, GLenum pname, GLfixed *params);
+extern "C" GLboolean GL_APIENTRY glIsFramebufferOES(GLuint framebuffer);
+extern "C" GLboolean GL_APIENTRY glIsRenderbufferOES(GLuint renderbuffer);
 extern "C" void GL_APIENTRY glLightModelf(GLenum pname, GLfloat param);
 extern "C" void GL_APIENTRY glLightModelfv(GLenum pname, const GLfloat *params);
 extern "C" void GL_APIENTRY glLightModelx(GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glLightModelxOES(GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glLightModelxv(GLenum pname, const GLfixed *param);
+extern "C" void GL_APIENTRY glLightModelxvOES(GLenum pname, const GLfixed *param);
 extern "C" void GL_APIENTRY glLightf(GLenum light, GLenum pname, GLfloat param);
 extern "C" void GL_APIENTRY glLightfv(GLenum light, GLenum pname, const GLfloat *params);
 extern "C" void GL_APIENTRY glLightx(GLenum light, GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glLightxOES(GLenum light, GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glLightxv(GLenum light, GLenum pname, const GLfixed *params);
+extern "C" void GL_APIENTRY glLightxvOES(GLenum light, GLenum pname, const GLfixed *params);
 extern "C" void GL_APIENTRY glLineWidthx(GLfixed width);
+extern "C" void GL_APIENTRY glLineWidthxOES(GLfixed width);
 extern "C" void GL_APIENTRY glLoadIdentity(void);
 extern "C" void GL_APIENTRY glLoadMatrixf(const GLfloat *m);
 extern "C" void GL_APIENTRY glLoadMatrixx(const GLfixed *m);
+extern "C" void GL_APIENTRY glLoadMatrixxOES(const GLfixed *m);
+extern "C" void GL_APIENTRY glLoadPaletteFromModelViewMatrixOES(void);
 extern "C" void GL_APIENTRY glLogicOp(GLenum opcode);
 extern "C" void GL_APIENTRY glMaterialf(GLenum face, GLenum pname, GLfloat param);
 extern "C" void GL_APIENTRY glMaterialfv(GLenum face, GLenum pname, const GLfloat *params);
 extern "C" void GL_APIENTRY glMaterialx(GLenum face, GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glMaterialxOES(GLenum face, GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glMaterialxv(GLenum face, GLenum pname, const GLfixed *param);
+extern "C" void GL_APIENTRY glMaterialxvOES(GLenum face, GLenum pname, const GLfixed *param);
+extern "C" void GL_APIENTRY glMatrixIndexPointerOES(GLint size, GLenum type, GLsizei stride, const void *pointer);
 extern "C" void GL_APIENTRY glMatrixMode(GLenum mode);
 extern "C" void GL_APIENTRY glMultMatrixf(const GLfloat *m);
 extern "C" void GL_APIENTRY glMultMatrixx(const GLfixed *m);
+extern "C" void GL_APIENTRY glMultMatrixxOES(const GLfixed *m);
 extern "C" void GL_APIENTRY glMultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q);
 extern "C" void GL_APIENTRY glMultiTexCoord4x(GLenum texture, GLfixed s, GLfixed t, GLfixed r, GLfixed q);
+extern "C" void GL_APIENTRY glMultiTexCoord4xOES(GLenum texture, GLfixed s, GLfixed t, GLfixed r, GLfixed q);
 extern "C" void GL_APIENTRY glNormal3f(GLfloat nx, GLfloat ny, GLfloat nz);
 extern "C" void GL_APIENTRY glNormal3x(GLfixed nx, GLfixed ny, GLfixed nz);
+extern "C" void GL_APIENTRY glNormal3xOES(GLfixed nx, GLfixed ny, GLfixed nz);
 extern "C" void GL_APIENTRY glNormalPointer(GLenum type, GLsizei stride, const void *pointer);
 extern "C" void GL_APIENTRY glOrthof(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f);
+extern "C" void GL_APIENTRY glOrthofOES(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f);
 extern "C" void GL_APIENTRY glOrthox(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f);
+extern "C" void GL_APIENTRY glOrthoxOES(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f);
 extern "C" void GL_APIENTRY glPointParameterf(GLenum pname, GLfloat param);
 extern "C" void GL_APIENTRY glPointParameterfv(GLenum pname, const GLfloat *params);
 extern "C" void GL_APIENTRY glPointParameterx(GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glPointParameterxOES(GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glPointParameterxv(GLenum pname, const GLfixed *params);
+extern "C" void GL_APIENTRY glPointParameterxvOES(GLenum pname, const GLfixed *params);
 extern "C" void GL_APIENTRY glPointSize(GLfloat size);
 extern "C" void GL_APIENTRY glPointSizePointerOES(GLenum type, GLsizei stride, const void *pointer);
 extern "C" void GL_APIENTRY glPointSizex(GLfixed size);
+extern "C" void GL_APIENTRY glPointSizexOES(GLfixed size);
 extern "C" void GL_APIENTRY glPolygonOffsetx(GLfixed factor, GLfixed units);
+extern "C" void GL_APIENTRY glPolygonOffsetxOES(GLfixed factor, GLfixed units);
 extern "C" void GL_APIENTRY glPopMatrix(void);
 extern "C" void GL_APIENTRY glPushMatrix(void);
+extern "C" GLbitfield GL_APIENTRY glQueryMatrixxOES(GLfixed *mantissa, GLint *exponent);
+extern "C" void GL_APIENTRY glRenderbufferStorageOES(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 extern "C" void GL_APIENTRY glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z);
 extern "C" void GL_APIENTRY glRotatex(GLfixed angle, GLfixed x, GLfixed y, GLfixed z);
+extern "C" void GL_APIENTRY glRotatexOES(GLfixed angle, GLfixed x, GLfixed y, GLfixed z);
 extern "C" void GL_APIENTRY glSampleCoveragex(GLclampx value, GLboolean invert);
+extern "C" void GL_APIENTRY glSampleCoveragexOES(GLclampx value, GLboolean invert);
 extern "C" void GL_APIENTRY glScalef(GLfloat x, GLfloat y, GLfloat z);
 extern "C" void GL_APIENTRY glScalex(GLfixed x, GLfixed y, GLfixed z);
+extern "C" void GL_APIENTRY glScalexOES(GLfixed x, GLfixed y, GLfixed z);
 extern "C" void GL_APIENTRY glShadeModel(GLenum mode);
 extern "C" void GL_APIENTRY glTexCoordPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
 extern "C" void GL_APIENTRY glTexEnvf(GLenum target, GLenum pname, GLfloat param);
@@ -81,12 +156,24 @@ extern "C" void GL_APIENTRY glTexEnvfv(GLenum target, GLenum pname, const GLfloa
 extern "C" void GL_APIENTRY glTexEnvi(GLenum target, GLenum pname, GLint param);
 extern "C" void GL_APIENTRY glTexEnviv(GLenum target, GLenum pname, const GLint *params);
 extern "C" void GL_APIENTRY glTexEnvx(GLenum target, GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glTexEnvxOES(GLenum target, GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glTexEnvxv(GLenum target, GLenum pname, const GLfixed *params);
+extern "C" void GL_APIENTRY glTexEnvxvOES(GLenum target, GLenum pname, const GLfixed *params);
+extern "C" void GL_APIENTRY glTexGenfOES(GLenum coord, GLenum pname, GLfloat param);
+extern "C" void GL_APIENTRY glTexGenfvOES(GLenum coord, GLenum pname, const GLfloat *params);
+extern "C" void GL_APIENTRY glTexGeniOES(GLenum coord, GLenum pname, GLint param);
+extern "C" void GL_APIENTRY glTexGenivOES(GLenum coord, GLenum pname, const GLint *params);
+extern "C" void GL_APIENTRY glTexGenxOES(GLenum coord, GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glTexGenxvOES(GLenum coord, GLenum pname, const GLfixed *params);
 extern "C" void GL_APIENTRY glTexParameterx(GLenum target, GLenum pname, GLfixed param);
+extern "C" void GL_APIENTRY glTexParameterxOES(GLenum target, GLenum pname, GLfixed param);
 extern "C" void GL_APIENTRY glTexParameterxv(GLenum target, GLenum pname, const GLfixed *params);
+extern "C" void GL_APIENTRY glTexParameterxvOES(GLenum target, GLenum pname, const GLfixed *params);
 extern "C" void GL_APIENTRY glTranslatef(GLfloat x, GLfloat y, GLfloat z);
 extern "C" void GL_APIENTRY glTranslatex(GLfixed x, GLfixed y, GLfixed z);
+extern "C" void GL_APIENTRY glTranslatexOES(GLfixed x, GLfixed y, GLfixed z);
 extern "C" void GL_APIENTRY glVertexPointer(GLint size, GLenum type, GLsizei stride, const void *pointer);
+extern "C" void GL_APIENTRY glWeightPointerOES(GLint size, GLenum type, GLsizei stride, const void *pointer);
 
 WINAPK_GUEST_ABI EGLBoolean guest_eglBindAPI(EGLenum api) { return eglBindAPI(api); }
 WINAPK_GUEST_ABI EGLint guest_eglClientWaitSync(EGLDisplay dpy, EGLSync sync, EGLint flags, EGLTime timeout) { return eglClientWaitSync(dpy, sync, flags, timeout); }
@@ -122,6 +209,7 @@ WINAPK_GUEST_ABI void guest_glActiveTexture(GLenum texture) { glActiveTexture(te
 WINAPK_GUEST_ABI void guest_glAlphaFunc(GLenum func, GLfloat ref) { glAlphaFunc(func, ref); }
 WINAPK_GUEST_ABI void guest_glAlphaFuncQCOM(GLenum func, GLclampf ref) { glAlphaFuncQCOM(func, ref); }
 WINAPK_GUEST_ABI void guest_glAlphaFuncx(GLenum func, GLfixed ref) { glAlphaFuncx(func, ref); }
+WINAPK_GUEST_ABI void guest_glAlphaFuncxOES(GLenum func, GLfixed ref) { glAlphaFuncxOES(func, ref); }
 WINAPK_GUEST_ABI void guest_glApplyFramebufferAttachmentCMAAINTEL(void) { glApplyFramebufferAttachmentCMAAINTEL(); }
 WINAPK_GUEST_ABI void guest_glAttachShader(GLuint program, GLuint shader) { glAttachShader(program, shader); }
 WINAPK_GUEST_ABI void guest_glBeginConditionalRenderNV(GLuint id, GLenum mode) { glBeginConditionalRenderNV(id, mode); }
@@ -137,10 +225,12 @@ WINAPK_GUEST_ABI void guest_glBindBufferRange(GLenum target, GLuint index, GLuin
 WINAPK_GUEST_ABI void guest_glBindFragDataLocationEXT(GLuint program, GLuint color, const GLchar *name) { glBindFragDataLocationEXT(program, color, name); }
 WINAPK_GUEST_ABI void guest_glBindFragDataLocationIndexedEXT(GLuint program, GLuint colorNumber, GLuint index, const GLchar *name) { glBindFragDataLocationIndexedEXT(program, colorNumber, index, name); }
 WINAPK_GUEST_ABI void guest_glBindFramebuffer(GLenum target, GLuint framebuffer) { glBindFramebuffer(target, framebuffer); }
+WINAPK_GUEST_ABI void guest_glBindFramebufferOES(GLenum target, GLuint framebuffer) { glBindFramebufferOES(target, framebuffer); }
 WINAPK_GUEST_ABI void guest_glBindImageTexture(GLuint unit, GLuint texture, GLint level, GLboolean layered, GLint layer, GLenum access, GLenum format) { glBindImageTexture(unit, texture, level, layered, layer, access, format); }
 WINAPK_GUEST_ABI void guest_glBindProgramPipeline(GLuint pipeline) { glBindProgramPipeline(pipeline); }
 WINAPK_GUEST_ABI void guest_glBindProgramPipelineEXT(GLuint pipeline) { glBindProgramPipelineEXT(pipeline); }
 WINAPK_GUEST_ABI void guest_glBindRenderbuffer(GLenum target, GLuint renderbuffer) { glBindRenderbuffer(target, renderbuffer); }
+WINAPK_GUEST_ABI void guest_glBindRenderbufferOES(GLenum target, GLuint renderbuffer) { glBindRenderbufferOES(target, renderbuffer); }
 WINAPK_GUEST_ABI void guest_glBindSampler(GLuint unit, GLuint sampler) { glBindSampler(unit, sampler); }
 WINAPK_GUEST_ABI void guest_glBindShadingRateImageNV(GLuint texture) { glBindShadingRateImageNV(texture); }
 WINAPK_GUEST_ABI void guest_glBindTexture(GLenum target, GLuint texture) { glBindTexture(target, texture); }
@@ -153,7 +243,9 @@ WINAPK_GUEST_ABI void guest_glBlendBarrierKHR(void) { glBlendBarrierKHR(); }
 WINAPK_GUEST_ABI void guest_glBlendBarrierNV(void) { glBlendBarrierNV(); }
 WINAPK_GUEST_ABI void guest_glBlendColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha) { glBlendColor(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glBlendEquation(GLenum mode) { glBlendEquation(mode); }
+WINAPK_GUEST_ABI void guest_glBlendEquationOES(GLenum mode) { glBlendEquationOES(mode); }
 WINAPK_GUEST_ABI void guest_glBlendEquationSeparate(GLenum modeRGB, GLenum modeAlpha) { glBlendEquationSeparate(modeRGB, modeAlpha); }
+WINAPK_GUEST_ABI void guest_glBlendEquationSeparateOES(GLenum modeRGB, GLenum modeAlpha) { glBlendEquationSeparateOES(modeRGB, modeAlpha); }
 WINAPK_GUEST_ABI void guest_glBlendEquationSeparatei(GLuint buf, GLenum modeRGB, GLenum modeAlpha) { glBlendEquationSeparatei(buf, modeRGB, modeAlpha); }
 WINAPK_GUEST_ABI void guest_glBlendEquationSeparateiEXT(GLuint buf, GLenum modeRGB, GLenum modeAlpha) { glBlendEquationSeparateiEXT(buf, modeRGB, modeAlpha); }
 WINAPK_GUEST_ABI void guest_glBlendEquationSeparateiOES(GLuint buf, GLenum modeRGB, GLenum modeAlpha) { glBlendEquationSeparateiOES(buf, modeRGB, modeAlpha); }
@@ -162,6 +254,7 @@ WINAPK_GUEST_ABI void guest_glBlendEquationiEXT(GLuint buf, GLenum mode) { glBle
 WINAPK_GUEST_ABI void guest_glBlendEquationiOES(GLuint buf, GLenum mode) { glBlendEquationiOES(buf, mode); }
 WINAPK_GUEST_ABI void guest_glBlendFunc(GLenum sfactor, GLenum dfactor) { glBlendFunc(sfactor, dfactor); }
 WINAPK_GUEST_ABI void guest_glBlendFuncSeparate(GLenum sfactorRGB, GLenum dfactorRGB, GLenum sfactorAlpha, GLenum dfactorAlpha) { glBlendFuncSeparate(sfactorRGB, dfactorRGB, sfactorAlpha, dfactorAlpha); }
+WINAPK_GUEST_ABI void guest_glBlendFuncSeparateOES(GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha) { glBlendFuncSeparateOES(srcRGB, dstRGB, srcAlpha, dstAlpha); }
 WINAPK_GUEST_ABI void guest_glBlendFuncSeparatei(GLuint buf, GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha) { glBlendFuncSeparatei(buf, srcRGB, dstRGB, srcAlpha, dstAlpha); }
 WINAPK_GUEST_ABI void guest_glBlendFuncSeparateiEXT(GLuint buf, GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha) { glBlendFuncSeparateiEXT(buf, srcRGB, dstRGB, srcAlpha, dstAlpha); }
 WINAPK_GUEST_ABI void guest_glBlendFuncSeparateiOES(GLuint buf, GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha) { glBlendFuncSeparateiOES(buf, srcRGB, dstRGB, srcAlpha, dstAlpha); }
@@ -182,6 +275,7 @@ WINAPK_GUEST_ABI void guest_glBufferStorageExternalEXT(GLenum target, GLintptr o
 WINAPK_GUEST_ABI void guest_glBufferStorageMemEXT(GLenum target, GLsizeiptr size, GLuint memory, GLuint64 offset) { glBufferStorageMemEXT(target, size, memory, offset); }
 WINAPK_GUEST_ABI void guest_glBufferSubData(GLenum target, GLintptr offset, GLsizeiptr size, const void *data) { glBufferSubData(target, offset, size, data); }
 WINAPK_GUEST_ABI GLenum guest_glCheckFramebufferStatus(GLenum target) { return glCheckFramebufferStatus(target); }
+WINAPK_GUEST_ABI GLenum guest_glCheckFramebufferStatusOES(GLenum target) { return glCheckFramebufferStatusOES(target); }
 WINAPK_GUEST_ABI void guest_glClear(GLbitfield mask) { glClear(mask); }
 WINAPK_GUEST_ABI void guest_glClearBufferfi(GLenum buffer, GLint drawbuffer, GLfloat depth, GLint stencil) { glClearBufferfi(buffer, drawbuffer, depth, stencil); }
 WINAPK_GUEST_ABI void guest_glClearBufferfv(GLenum buffer, GLint drawbuffer, const GLfloat *value) { glClearBufferfv(buffer, drawbuffer, value); }
@@ -189,8 +283,11 @@ WINAPK_GUEST_ABI void guest_glClearBufferiv(GLenum buffer, GLint drawbuffer, con
 WINAPK_GUEST_ABI void guest_glClearBufferuiv(GLenum buffer, GLint drawbuffer, const GLuint *value) { glClearBufferuiv(buffer, drawbuffer, value); }
 WINAPK_GUEST_ABI void guest_glClearColor(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha) { glClearColor(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glClearColorx(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha) { glClearColorx(red, green, blue, alpha); }
+WINAPK_GUEST_ABI void guest_glClearColorxOES(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha) { glClearColorxOES(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glClearDepthf(GLfloat d) { glClearDepthf(d); }
+WINAPK_GUEST_ABI void guest_glClearDepthfOES(GLclampf depth) { glClearDepthfOES(depth); }
 WINAPK_GUEST_ABI void guest_glClearDepthx(GLfixed depth) { glClearDepthx(depth); }
+WINAPK_GUEST_ABI void guest_glClearDepthxOES(GLfixed depth) { glClearDepthxOES(depth); }
 WINAPK_GUEST_ABI void guest_glClearPixelLocalStorageuiEXT(GLsizei offset, GLsizei n, const GLuint *values) { glClearPixelLocalStorageuiEXT(offset, n, values); }
 WINAPK_GUEST_ABI void guest_glClearStencil(GLint s) { glClearStencil(s); }
 WINAPK_GUEST_ABI void guest_glClearTexImageEXT(GLuint texture, GLint level, GLenum format, GLenum type, const void *data) { glClearTexImageEXT(texture, level, format, type, data); }
@@ -200,10 +297,15 @@ WINAPK_GUEST_ABI GLenum guest_glClientWaitSync(GLsync sync, GLbitfield flags, GL
 WINAPK_GUEST_ABI GLenum guest_glClientWaitSyncAPPLE(GLsync sync, GLbitfield flags, GLuint64 timeout) { return glClientWaitSyncAPPLE(sync, flags, timeout); }
 WINAPK_GUEST_ABI void guest_glClipControlEXT(GLenum origin, GLenum depth) { glClipControlEXT(origin, depth); }
 WINAPK_GUEST_ABI void guest_glClipPlanef(GLenum p, const GLfloat *eqn) { glClipPlanef(p, eqn); }
+WINAPK_GUEST_ABI void guest_glClipPlanefIMG(GLenum p, const GLfloat *eqn) { glClipPlanefIMG(p, eqn); }
+WINAPK_GUEST_ABI void guest_glClipPlanefOES(GLenum plane, const GLfloat *equation) { glClipPlanefOES(plane, equation); }
 WINAPK_GUEST_ABI void guest_glClipPlanex(GLenum plane, const GLfixed *equation) { glClipPlanex(plane, equation); }
+WINAPK_GUEST_ABI void guest_glClipPlanexIMG(GLenum p, const GLfixed *eqn) { glClipPlanexIMG(p, eqn); }
+WINAPK_GUEST_ABI void guest_glClipPlanexOES(GLenum plane, const GLfixed *equation) { glClipPlanexOES(plane, equation); }
 WINAPK_GUEST_ABI void guest_glColor4f(GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha) { glColor4f(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glColor4ub(GLubyte red, GLubyte green, GLubyte blue, GLubyte alpha) { glColor4ub(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glColor4x(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha) { glColor4x(red, green, blue, alpha); }
+WINAPK_GUEST_ABI void guest_glColor4xOES(GLfixed red, GLfixed green, GLfixed blue, GLfixed alpha) { glColor4xOES(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glColorMask(GLboolean red, GLboolean green, GLboolean blue, GLboolean alpha) { glColorMask(red, green, blue, alpha); }
 WINAPK_GUEST_ABI void guest_glColorMaski(GLuint index, GLboolean r, GLboolean g, GLboolean b, GLboolean a) { glColorMaski(index, r, g, b, a); }
 WINAPK_GUEST_ABI void guest_glColorMaskiEXT(GLuint index, GLboolean r, GLboolean g, GLboolean b, GLboolean a) { glColorMaskiEXT(index, r, g, b, a); }
@@ -244,6 +346,7 @@ WINAPK_GUEST_ABI GLuint guest_glCreateShader(GLenum type) { return glCreateShade
 WINAPK_GUEST_ABI GLuint guest_glCreateShaderProgramv(GLenum type, GLsizei count, const GLchar *const*strings) { return glCreateShaderProgramv(type, count, strings); }
 WINAPK_GUEST_ABI GLuint guest_glCreateShaderProgramvEXT(GLenum type, GLsizei count, const GLchar *const*strings) { return glCreateShaderProgramvEXT(type, count, strings); }
 WINAPK_GUEST_ABI void guest_glCullFace(GLenum mode) { glCullFace(mode); }
+WINAPK_GUEST_ABI void guest_glCurrentPaletteMatrixOES(GLuint matrixpaletteindex) { glCurrentPaletteMatrixOES(matrixpaletteindex); }
 WINAPK_GUEST_ABI void guest_glDebugMessageControl(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint *ids, GLboolean enabled) { glDebugMessageControl(source, type, severity, count, ids, enabled); }
 WINAPK_GUEST_ABI void guest_glDebugMessageControlKHR(GLenum source, GLenum type, GLenum severity, GLsizei count, const GLuint *ids, GLboolean enabled) { glDebugMessageControlKHR(source, type, severity, count, ids, enabled); }
 WINAPK_GUEST_ABI void guest_glDebugMessageInsert(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *buf) { glDebugMessageInsert(source, type, id, severity, length, buf); }
@@ -251,6 +354,7 @@ WINAPK_GUEST_ABI void guest_glDebugMessageInsertKHR(GLenum source, GLenum type, 
 WINAPK_GUEST_ABI void guest_glDeleteBuffers(GLsizei n, const GLuint *buffers) { glDeleteBuffers(n, buffers); }
 WINAPK_GUEST_ABI void guest_glDeleteFencesNV(GLsizei n, const GLuint *fences) { glDeleteFencesNV(n, fences); }
 WINAPK_GUEST_ABI void guest_glDeleteFramebuffers(GLsizei n, const GLuint *framebuffers) { glDeleteFramebuffers(n, framebuffers); }
+WINAPK_GUEST_ABI void guest_glDeleteFramebuffersOES(GLsizei n, const GLuint *framebuffers) { glDeleteFramebuffersOES(n, framebuffers); }
 WINAPK_GUEST_ABI void guest_glDeleteMemoryObjectsEXT(GLsizei n, const GLuint *memoryObjects) { glDeleteMemoryObjectsEXT(n, memoryObjects); }
 WINAPK_GUEST_ABI void guest_glDeletePathsNV(GLuint path, GLsizei range) { glDeletePathsNV(path, range); }
 WINAPK_GUEST_ABI void guest_glDeletePerfMonitorsAMD(GLsizei n, GLuint *monitors) { glDeletePerfMonitorsAMD(n, monitors); }
@@ -261,6 +365,7 @@ WINAPK_GUEST_ABI void guest_glDeleteProgramPipelinesEXT(GLsizei n, const GLuint 
 WINAPK_GUEST_ABI void guest_glDeleteQueries(GLsizei n, const GLuint *ids) { glDeleteQueries(n, ids); }
 WINAPK_GUEST_ABI void guest_glDeleteQueriesEXT(GLsizei n, const GLuint *ids) { glDeleteQueriesEXT(n, ids); }
 WINAPK_GUEST_ABI void guest_glDeleteRenderbuffers(GLsizei n, const GLuint *renderbuffers) { glDeleteRenderbuffers(n, renderbuffers); }
+WINAPK_GUEST_ABI void guest_glDeleteRenderbuffersOES(GLsizei n, const GLuint *renderbuffers) { glDeleteRenderbuffersOES(n, renderbuffers); }
 WINAPK_GUEST_ABI void guest_glDeleteSamplers(GLsizei count, const GLuint *samplers) { glDeleteSamplers(count, samplers); }
 WINAPK_GUEST_ABI void guest_glDeleteSemaphoresEXT(GLsizei n, const GLuint *semaphores) { glDeleteSemaphoresEXT(n, semaphores); }
 WINAPK_GUEST_ABI void guest_glDeleteShader(GLuint shader) { glDeleteShader(shader); }
@@ -277,7 +382,9 @@ WINAPK_GUEST_ABI void guest_glDepthRangeArrayfvOES(GLuint first, GLsizei count, 
 WINAPK_GUEST_ABI void guest_glDepthRangeIndexedfNV(GLuint index, GLfloat n, GLfloat f) { glDepthRangeIndexedfNV(index, n, f); }
 WINAPK_GUEST_ABI void guest_glDepthRangeIndexedfOES(GLuint index, GLfloat n, GLfloat f) { glDepthRangeIndexedfOES(index, n, f); }
 WINAPK_GUEST_ABI void guest_glDepthRangef(GLfloat n, GLfloat f) { glDepthRangef(n, f); }
+WINAPK_GUEST_ABI void guest_glDepthRangefOES(GLclampf n, GLclampf f) { glDepthRangefOES(n, f); }
 WINAPK_GUEST_ABI void guest_glDepthRangex(GLfixed n, GLfixed f) { glDepthRangex(n, f); }
+WINAPK_GUEST_ABI void guest_glDepthRangexOES(GLfixed n, GLfixed f) { glDepthRangexOES(n, f); }
 WINAPK_GUEST_ABI void guest_glDetachShader(GLuint program, GLuint shader) { glDetachShader(program, shader); }
 WINAPK_GUEST_ABI void guest_glDisable(GLenum cap) { glDisable(cap); }
 WINAPK_GUEST_ABI void guest_glDisableClientState(GLenum array) { glDisableClientState(array); }
@@ -323,6 +430,14 @@ WINAPK_GUEST_ABI void guest_glDrawRangeElements(GLenum mode, GLuint start, GLuin
 WINAPK_GUEST_ABI void guest_glDrawRangeElementsBaseVertex(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices, GLint basevertex) { glDrawRangeElementsBaseVertex(mode, start, end, count, type, indices, basevertex); }
 WINAPK_GUEST_ABI void guest_glDrawRangeElementsBaseVertexEXT(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices, GLint basevertex) { glDrawRangeElementsBaseVertexEXT(mode, start, end, count, type, indices, basevertex); }
 WINAPK_GUEST_ABI void guest_glDrawRangeElementsBaseVertexOES(GLenum mode, GLuint start, GLuint end, GLsizei count, GLenum type, const void *indices, GLint basevertex) { glDrawRangeElementsBaseVertexOES(mode, start, end, count, type, indices, basevertex); }
+WINAPK_GUEST_ABI void guest_glDrawTexfOES(GLfloat x, GLfloat y, GLfloat z, GLfloat width, GLfloat height) { glDrawTexfOES(x, y, z, width, height); }
+WINAPK_GUEST_ABI void guest_glDrawTexfvOES(const GLfloat *coords) { glDrawTexfvOES(coords); }
+WINAPK_GUEST_ABI void guest_glDrawTexiOES(GLint x, GLint y, GLint z, GLint width, GLint height) { glDrawTexiOES(x, y, z, width, height); }
+WINAPK_GUEST_ABI void guest_glDrawTexivOES(const GLint *coords) { glDrawTexivOES(coords); }
+WINAPK_GUEST_ABI void guest_glDrawTexsOES(GLshort x, GLshort y, GLshort z, GLshort width, GLshort height) { glDrawTexsOES(x, y, z, width, height); }
+WINAPK_GUEST_ABI void guest_glDrawTexsvOES(const GLshort *coords) { glDrawTexsvOES(coords); }
+WINAPK_GUEST_ABI void guest_glDrawTexxOES(GLfixed x, GLfixed y, GLfixed z, GLfixed width, GLfixed height) { glDrawTexxOES(x, y, z, width, height); }
+WINAPK_GUEST_ABI void guest_glDrawTexxvOES(const GLfixed *coords) { glDrawTexxvOES(coords); }
 WINAPK_GUEST_ABI void guest_glDrawTransformFeedbackEXT(GLenum mode, GLuint id) { glDrawTransformFeedbackEXT(mode, id); }
 WINAPK_GUEST_ABI void guest_glDrawTransformFeedbackInstancedEXT(GLenum mode, GLuint id, GLsizei instancecount) { glDrawTransformFeedbackInstancedEXT(mode, id, instancecount); }
 WINAPK_GUEST_ABI void guest_glDrawVkImageNV(GLuint64 vkImage, GLuint sampler, GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1, GLfloat z, GLfloat s0, GLfloat t0, GLfloat s1, GLfloat t1) { glDrawVkImageNV(vkImage, sampler, x0, y0, x1, y1, z, s0, t0, s1, t1); }
@@ -368,7 +483,9 @@ WINAPK_GUEST_ABI void guest_glFlushMappedBufferRangeEXT(GLenum target, GLintptr 
 WINAPK_GUEST_ABI void guest_glFogf(GLenum pname, GLfloat param) { glFogf(pname, param); }
 WINAPK_GUEST_ABI void guest_glFogfv(GLenum pname, const GLfloat *params) { glFogfv(pname, params); }
 WINAPK_GUEST_ABI void guest_glFogx(GLenum pname, GLfixed param) { glFogx(pname, param); }
+WINAPK_GUEST_ABI void guest_glFogxOES(GLenum pname, GLfixed param) { glFogxOES(pname, param); }
 WINAPK_GUEST_ABI void guest_glFogxv(GLenum pname, const GLfixed *param) { glFogxv(pname, param); }
+WINAPK_GUEST_ABI void guest_glFogxvOES(GLenum pname, const GLfixed *param) { glFogxvOES(pname, param); }
 WINAPK_GUEST_ABI void guest_glFragmentCoverageColorNV(GLuint color) { glFragmentCoverageColorNV(color); }
 WINAPK_GUEST_ABI void guest_glFramebufferFetchBarrierEXT(void) { glFramebufferFetchBarrierEXT(); }
 WINAPK_GUEST_ABI void guest_glFramebufferFetchBarrierQCOM(void) { glFramebufferFetchBarrierQCOM(); }
@@ -378,6 +495,7 @@ WINAPK_GUEST_ABI void guest_glFramebufferParameteri(GLenum target, GLenum pname,
 WINAPK_GUEST_ABI void guest_glFramebufferParameteriMESA(GLenum target, GLenum pname, GLint param) { glFramebufferParameteriMESA(target, pname, param); }
 WINAPK_GUEST_ABI void guest_glFramebufferPixelLocalStorageSizeEXT(GLuint target, GLsizei size) { glFramebufferPixelLocalStorageSizeEXT(target, size); }
 WINAPK_GUEST_ABI void guest_glFramebufferRenderbuffer(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer) { glFramebufferRenderbuffer(target, attachment, renderbuffertarget, renderbuffer); }
+WINAPK_GUEST_ABI void guest_glFramebufferRenderbufferOES(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer) { glFramebufferRenderbufferOES(target, attachment, renderbuffertarget, renderbuffer); }
 WINAPK_GUEST_ABI void guest_glFramebufferSampleLocationsfvNV(GLenum target, GLuint start, GLsizei count, const GLfloat *v) { glFramebufferSampleLocationsfvNV(target, start, count, v); }
 WINAPK_GUEST_ABI void guest_glFramebufferShadingRateEXT(GLenum target, GLenum attachment, GLuint texture, GLint baseLayer, GLsizei numLayers, GLsizei texelWidth, GLsizei texelHeight) { glFramebufferShadingRateEXT(target, attachment, texture, baseLayer, numLayers, texelWidth, texelHeight); }
 WINAPK_GUEST_ABI void guest_glFramebufferTexture(GLenum target, GLenum attachment, GLuint texture, GLint level) { glFramebufferTexture(target, attachment, texture, level); }
@@ -385,6 +503,7 @@ WINAPK_GUEST_ABI void guest_glFramebufferTexture2D(GLenum target, GLenum attachm
 WINAPK_GUEST_ABI void guest_glFramebufferTexture2DDownsampleIMG(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint xscale, GLint yscale) { glFramebufferTexture2DDownsampleIMG(target, attachment, textarget, texture, level, xscale, yscale); }
 WINAPK_GUEST_ABI void guest_glFramebufferTexture2DMultisampleEXT(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLsizei samples) { glFramebufferTexture2DMultisampleEXT(target, attachment, textarget, texture, level, samples); }
 WINAPK_GUEST_ABI void guest_glFramebufferTexture2DMultisampleIMG(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLsizei samples) { glFramebufferTexture2DMultisampleIMG(target, attachment, textarget, texture, level, samples); }
+WINAPK_GUEST_ABI void guest_glFramebufferTexture2DOES(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level) { glFramebufferTexture2DOES(target, attachment, textarget, texture, level); }
 WINAPK_GUEST_ABI void guest_glFramebufferTexture3DOES(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level, GLint zoffset) { glFramebufferTexture3DOES(target, attachment, textarget, texture, level, zoffset); }
 WINAPK_GUEST_ABI void guest_glFramebufferTextureEXT(GLenum target, GLenum attachment, GLuint texture, GLint level) { glFramebufferTextureEXT(target, attachment, texture, level); }
 WINAPK_GUEST_ABI void guest_glFramebufferTextureLayer(GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer) { glFramebufferTextureLayer(target, attachment, texture, level, layer); }
@@ -394,10 +513,13 @@ WINAPK_GUEST_ABI void guest_glFramebufferTextureMultiviewOVR(GLenum target, GLen
 WINAPK_GUEST_ABI void guest_glFramebufferTextureOES(GLenum target, GLenum attachment, GLuint texture, GLint level) { glFramebufferTextureOES(target, attachment, texture, level); }
 WINAPK_GUEST_ABI void guest_glFrontFace(GLenum mode) { glFrontFace(mode); }
 WINAPK_GUEST_ABI void guest_glFrustumf(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f) { glFrustumf(l, r, b, t, n, f); }
+WINAPK_GUEST_ABI void guest_glFrustumfOES(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f) { glFrustumfOES(l, r, b, t, n, f); }
 WINAPK_GUEST_ABI void guest_glFrustumx(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f) { glFrustumx(l, r, b, t, n, f); }
+WINAPK_GUEST_ABI void guest_glFrustumxOES(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f) { glFrustumxOES(l, r, b, t, n, f); }
 WINAPK_GUEST_ABI void guest_glGenBuffers(GLsizei n, GLuint *buffers) { glGenBuffers(n, buffers); }
 WINAPK_GUEST_ABI void guest_glGenFencesNV(GLsizei n, GLuint *fences) { glGenFencesNV(n, fences); }
 WINAPK_GUEST_ABI void guest_glGenFramebuffers(GLsizei n, GLuint *framebuffers) { glGenFramebuffers(n, framebuffers); }
+WINAPK_GUEST_ABI void guest_glGenFramebuffersOES(GLsizei n, GLuint *framebuffers) { glGenFramebuffersOES(n, framebuffers); }
 WINAPK_GUEST_ABI GLuint guest_glGenPathsNV(GLsizei range) { return glGenPathsNV(range); }
 WINAPK_GUEST_ABI void guest_glGenPerfMonitorsAMD(GLsizei n, GLuint *monitors) { glGenPerfMonitorsAMD(n, monitors); }
 WINAPK_GUEST_ABI void guest_glGenProgramPipelines(GLsizei n, GLuint *pipelines) { glGenProgramPipelines(n, pipelines); }
@@ -405,6 +527,7 @@ WINAPK_GUEST_ABI void guest_glGenProgramPipelinesEXT(GLsizei n, GLuint *pipeline
 WINAPK_GUEST_ABI void guest_glGenQueries(GLsizei n, GLuint *ids) { glGenQueries(n, ids); }
 WINAPK_GUEST_ABI void guest_glGenQueriesEXT(GLsizei n, GLuint *ids) { glGenQueriesEXT(n, ids); }
 WINAPK_GUEST_ABI void guest_glGenRenderbuffers(GLsizei n, GLuint *renderbuffers) { glGenRenderbuffers(n, renderbuffers); }
+WINAPK_GUEST_ABI void guest_glGenRenderbuffersOES(GLsizei n, GLuint *renderbuffers) { glGenRenderbuffersOES(n, renderbuffers); }
 WINAPK_GUEST_ABI void guest_glGenSamplers(GLsizei count, GLuint *samplers) { glGenSamplers(count, samplers); }
 WINAPK_GUEST_ABI void guest_glGenSemaphoresEXT(GLsizei n, GLuint *semaphores) { glGenSemaphoresEXT(n, semaphores); }
 WINAPK_GUEST_ABI void guest_glGenTextures(GLsizei n, GLuint *textures) { glGenTextures(n, textures); }
@@ -412,6 +535,7 @@ WINAPK_GUEST_ABI void guest_glGenTransformFeedbacks(GLsizei n, GLuint *ids) { gl
 WINAPK_GUEST_ABI void guest_glGenVertexArrays(GLsizei n, GLuint *arrays) { glGenVertexArrays(n, arrays); }
 WINAPK_GUEST_ABI void guest_glGenVertexArraysOES(GLsizei n, GLuint *arrays) { glGenVertexArraysOES(n, arrays); }
 WINAPK_GUEST_ABI void guest_glGenerateMipmap(GLenum target) { glGenerateMipmap(target); }
+WINAPK_GUEST_ABI void guest_glGenerateMipmapOES(GLenum target) { glGenerateMipmapOES(target); }
 WINAPK_GUEST_ABI void guest_glGetActiveAttrib(GLuint program, GLuint index, GLsizei bufSize, GLsizei *length, GLint *size, GLenum *type, GLchar *name) { glGetActiveAttrib(program, index, bufSize, length, size, type, name); }
 WINAPK_GUEST_ABI void guest_glGetActiveUniform(GLuint program, GLuint index, GLsizei bufSize, GLsizei *length, GLint *size, GLenum *type, GLchar *name) { glGetActiveUniform(program, index, bufSize, length, size, type, name); }
 WINAPK_GUEST_ABI void guest_glGetActiveUniformBlockName(GLuint program, GLuint uniformBlockIndex, GLsizei bufSize, GLsizei *length, GLchar *uniformBlockName) { glGetActiveUniformBlockName(program, uniformBlockIndex, bufSize, length, uniformBlockName); }
@@ -426,7 +550,9 @@ WINAPK_GUEST_ABI void guest_glGetBufferParameteriv(GLenum target, GLenum pname, 
 WINAPK_GUEST_ABI void guest_glGetBufferPointerv(GLenum target, GLenum pname, void **params) { glGetBufferPointerv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetBufferPointervOES(GLenum target, GLenum pname, void **params) { glGetBufferPointervOES(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetClipPlanef(GLenum plane, GLfloat *equation) { glGetClipPlanef(plane, equation); }
+WINAPK_GUEST_ABI void guest_glGetClipPlanefOES(GLenum plane, GLfloat *equation) { glGetClipPlanefOES(plane, equation); }
 WINAPK_GUEST_ABI void guest_glGetClipPlanex(GLenum plane, GLfixed *equation) { glGetClipPlanex(plane, equation); }
+WINAPK_GUEST_ABI void guest_glGetClipPlanexOES(GLenum plane, GLfixed *equation) { glGetClipPlanexOES(plane, equation); }
 WINAPK_GUEST_ABI void guest_glGetCoverageModulationTableNV(GLsizei bufSize, GLfloat *v) { glGetCoverageModulationTableNV(bufSize, v); }
 WINAPK_GUEST_ABI GLuint guest_glGetDebugMessageLog(GLuint count, GLsizei bufSize, GLenum *sources, GLenum *types, GLuint *ids, GLenum *severities, GLsizei *lengths, GLchar *messageLog) { return glGetDebugMessageLog(count, bufSize, sources, types, ids, severities, lengths, messageLog); }
 WINAPK_GUEST_ABI GLuint guest_glGetDebugMessageLogKHR(GLuint count, GLsizei bufSize, GLenum *sources, GLenum *types, GLuint *ids, GLenum *severities, GLsizei *lengths, GLchar *messageLog) { return glGetDebugMessageLogKHR(count, bufSize, sources, types, ids, severities, lengths, messageLog); }
@@ -436,6 +562,7 @@ WINAPK_GUEST_ABI GLenum guest_glGetError(void) { return glGetError(); }
 WINAPK_GUEST_ABI void guest_glGetFenceivNV(GLuint fence, GLenum pname, GLint *params) { glGetFenceivNV(fence, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetFirstPerfQueryIdINTEL(GLuint *queryId) { glGetFirstPerfQueryIdINTEL(queryId); }
 WINAPK_GUEST_ABI void guest_glGetFixedv(GLenum pname, GLfixed *data) { glGetFixedv(pname, data); }
+WINAPK_GUEST_ABI void guest_glGetFixedvOES(GLenum pname, GLfixed *params) { glGetFixedvOES(pname, params); }
 WINAPK_GUEST_ABI void guest_glGetFloati_vNV(GLenum target, GLuint index, GLfloat *data) { glGetFloati_vNV(target, index, data); }
 WINAPK_GUEST_ABI void guest_glGetFloati_vOES(GLenum target, GLuint index, GLfloat *data) { glGetFloati_vOES(target, index, data); }
 WINAPK_GUEST_ABI void guest_glGetFloatv(GLenum pname, GLfloat *data) { glGetFloatv(pname, data); }
@@ -443,6 +570,7 @@ WINAPK_GUEST_ABI GLint guest_glGetFragDataIndexEXT(GLuint program, const GLchar 
 WINAPK_GUEST_ABI GLint guest_glGetFragDataLocation(GLuint program, const GLchar *name) { return glGetFragDataLocation(program, name); }
 WINAPK_GUEST_ABI void guest_glGetFragmentShadingRatesEXT(GLsizei samples, GLsizei maxCount, GLsizei *count, GLenum *shadingRates) { glGetFragmentShadingRatesEXT(samples, maxCount, count, shadingRates); }
 WINAPK_GUEST_ABI void guest_glGetFramebufferAttachmentParameteriv(GLenum target, GLenum attachment, GLenum pname, GLint *params) { glGetFramebufferAttachmentParameteriv(target, attachment, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetFramebufferAttachmentParameterivOES(GLenum target, GLenum attachment, GLenum pname, GLint *params) { glGetFramebufferAttachmentParameterivOES(target, attachment, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetFramebufferParameteriv(GLenum target, GLenum pname, GLint *params) { glGetFramebufferParameteriv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetFramebufferParameterivMESA(GLenum target, GLenum pname, GLint *params) { glGetFramebufferParameterivMESA(target, pname, params); }
 WINAPK_GUEST_ABI GLsizei guest_glGetFramebufferPixelLocalStorageSizeEXT(GLuint target) { return glGetFramebufferPixelLocalStorageSizeEXT(target); }
@@ -461,8 +589,10 @@ WINAPK_GUEST_ABI void guest_glGetInternalformatSampleivNV(GLenum target, GLenum 
 WINAPK_GUEST_ABI void guest_glGetInternalformativ(GLenum target, GLenum internalformat, GLenum pname, GLsizei count, GLint *params) { glGetInternalformativ(target, internalformat, pname, count, params); }
 WINAPK_GUEST_ABI void guest_glGetLightfv(GLenum light, GLenum pname, GLfloat *params) { glGetLightfv(light, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetLightxv(GLenum light, GLenum pname, GLfixed *params) { glGetLightxv(light, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetLightxvOES(GLenum light, GLenum pname, GLfixed *params) { glGetLightxvOES(light, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetMaterialfv(GLenum face, GLenum pname, GLfloat *params) { glGetMaterialfv(face, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetMaterialxv(GLenum face, GLenum pname, GLfixed *params) { glGetMaterialxv(face, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetMaterialxvOES(GLenum face, GLenum pname, GLfixed *params) { glGetMaterialxvOES(face, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetMemoryObjectDetachedResourcesuivNV(GLuint memory, GLenum pname, GLint first, GLsizei count, GLuint *params) { glGetMemoryObjectDetachedResourcesuivNV(memory, pname, first, count, params); }
 WINAPK_GUEST_ABI void guest_glGetMemoryObjectParameterivEXT(GLuint memoryObject, GLenum pname, GLint *params) { glGetMemoryObjectParameterivEXT(memoryObject, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetMultisamplefv(GLenum pname, GLuint index, GLfloat *val) { glGetMultisamplefv(pname, index, val); }
@@ -516,6 +646,7 @@ WINAPK_GUEST_ABI void guest_glGetQueryObjectuivEXT(GLuint id, GLenum pname, GLui
 WINAPK_GUEST_ABI void guest_glGetQueryiv(GLenum target, GLenum pname, GLint *params) { glGetQueryiv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetQueryivEXT(GLenum target, GLenum pname, GLint *params) { glGetQueryivEXT(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetRenderbufferParameteriv(GLenum target, GLenum pname, GLint *params) { glGetRenderbufferParameteriv(target, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetRenderbufferParameterivOES(GLenum target, GLenum pname, GLint *params) { glGetRenderbufferParameterivOES(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetSamplerParameterIiv(GLuint sampler, GLenum pname, GLint *params) { glGetSamplerParameterIiv(sampler, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetSamplerParameterIivEXT(GLuint sampler, GLenum pname, GLint *params) { glGetSamplerParameterIivEXT(sampler, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetSamplerParameterIivOES(GLuint sampler, GLenum pname, GLint *params) { glGetSamplerParameterIivOES(sampler, pname, params); }
@@ -539,6 +670,10 @@ WINAPK_GUEST_ABI void guest_glGetSyncivAPPLE(GLsync sync, GLenum pname, GLsizei 
 WINAPK_GUEST_ABI void guest_glGetTexEnvfv(GLenum target, GLenum pname, GLfloat *params) { glGetTexEnvfv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexEnviv(GLenum target, GLenum pname, GLint *params) { glGetTexEnviv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexEnvxv(GLenum target, GLenum pname, GLfixed *params) { glGetTexEnvxv(target, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetTexEnvxvOES(GLenum target, GLenum pname, GLfixed *params) { glGetTexEnvxvOES(target, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetTexGenfvOES(GLenum coord, GLenum pname, GLfloat *params) { glGetTexGenfvOES(coord, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetTexGenivOES(GLenum coord, GLenum pname, GLint *params) { glGetTexGenivOES(coord, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetTexGenxvOES(GLenum coord, GLenum pname, GLfixed *params) { glGetTexGenxvOES(coord, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexLevelParameterfv(GLenum target, GLint level, GLenum pname, GLfloat *params) { glGetTexLevelParameterfv(target, level, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexLevelParameteriv(GLenum target, GLint level, GLenum pname, GLint *params) { glGetTexLevelParameteriv(target, level, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexParameterIiv(GLenum target, GLenum pname, GLint *params) { glGetTexParameterIiv(target, pname, params); }
@@ -550,6 +685,7 @@ WINAPK_GUEST_ABI void guest_glGetTexParameterIuivOES(GLenum target, GLenum pname
 WINAPK_GUEST_ABI void guest_glGetTexParameterfv(GLenum target, GLenum pname, GLfloat *params) { glGetTexParameterfv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexParameteriv(GLenum target, GLenum pname, GLint *params) { glGetTexParameteriv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glGetTexParameterxv(GLenum target, GLenum pname, GLfixed *params) { glGetTexParameterxv(target, pname, params); }
+WINAPK_GUEST_ABI void guest_glGetTexParameterxvOES(GLenum target, GLenum pname, GLfixed *params) { glGetTexParameterxvOES(target, pname, params); }
 WINAPK_GUEST_ABI GLuint64 guest_glGetTextureHandleIMG(GLuint texture) { return glGetTextureHandleIMG(texture); }
 WINAPK_GUEST_ABI GLuint64 guest_glGetTextureHandleNV(GLuint texture) { return glGetTextureHandleNV(texture); }
 WINAPK_GUEST_ABI GLuint64 guest_glGetTextureSamplerHandleIMG(GLuint texture, GLuint sampler) { return glGetTextureSamplerHandleIMG(texture, sampler); }
@@ -598,6 +734,7 @@ WINAPK_GUEST_ABI GLboolean guest_glIsEnablediNV(GLenum target, GLuint index) { r
 WINAPK_GUEST_ABI GLboolean guest_glIsEnablediOES(GLenum target, GLuint index) { return glIsEnablediOES(target, index); }
 WINAPK_GUEST_ABI GLboolean guest_glIsFenceNV(GLuint fence) { return glIsFenceNV(fence); }
 WINAPK_GUEST_ABI GLboolean guest_glIsFramebuffer(GLuint framebuffer) { return glIsFramebuffer(framebuffer); }
+WINAPK_GUEST_ABI GLboolean guest_glIsFramebufferOES(GLuint framebuffer) { return glIsFramebufferOES(framebuffer); }
 WINAPK_GUEST_ABI GLboolean guest_glIsImageHandleResidentNV(GLuint64 handle) { return glIsImageHandleResidentNV(handle); }
 WINAPK_GUEST_ABI GLboolean guest_glIsMemoryObjectEXT(GLuint memoryObject) { return glIsMemoryObjectEXT(memoryObject); }
 WINAPK_GUEST_ABI GLboolean guest_glIsPathNV(GLuint path) { return glIsPathNV(path); }
@@ -609,6 +746,7 @@ WINAPK_GUEST_ABI GLboolean guest_glIsProgramPipelineEXT(GLuint pipeline) { retur
 WINAPK_GUEST_ABI GLboolean guest_glIsQuery(GLuint id) { return glIsQuery(id); }
 WINAPK_GUEST_ABI GLboolean guest_glIsQueryEXT(GLuint id) { return glIsQueryEXT(id); }
 WINAPK_GUEST_ABI GLboolean guest_glIsRenderbuffer(GLuint renderbuffer) { return glIsRenderbuffer(renderbuffer); }
+WINAPK_GUEST_ABI GLboolean guest_glIsRenderbufferOES(GLuint renderbuffer) { return glIsRenderbufferOES(renderbuffer); }
 WINAPK_GUEST_ABI GLboolean guest_glIsSampler(GLuint sampler) { return glIsSampler(sampler); }
 WINAPK_GUEST_ABI GLboolean guest_glIsSemaphoreEXT(GLuint semaphore) { return glIsSemaphoreEXT(semaphore); }
 WINAPK_GUEST_ABI GLboolean guest_glIsShader(GLuint shader) { return glIsShader(shader); }
@@ -623,17 +761,24 @@ WINAPK_GUEST_ABI void guest_glLabelObjectEXT(GLenum type, GLuint object, GLsizei
 WINAPK_GUEST_ABI void guest_glLightModelf(GLenum pname, GLfloat param) { glLightModelf(pname, param); }
 WINAPK_GUEST_ABI void guest_glLightModelfv(GLenum pname, const GLfloat *params) { glLightModelfv(pname, params); }
 WINAPK_GUEST_ABI void guest_glLightModelx(GLenum pname, GLfixed param) { glLightModelx(pname, param); }
+WINAPK_GUEST_ABI void guest_glLightModelxOES(GLenum pname, GLfixed param) { glLightModelxOES(pname, param); }
 WINAPK_GUEST_ABI void guest_glLightModelxv(GLenum pname, const GLfixed *param) { glLightModelxv(pname, param); }
+WINAPK_GUEST_ABI void guest_glLightModelxvOES(GLenum pname, const GLfixed *param) { glLightModelxvOES(pname, param); }
 WINAPK_GUEST_ABI void guest_glLightf(GLenum light, GLenum pname, GLfloat param) { glLightf(light, pname, param); }
 WINAPK_GUEST_ABI void guest_glLightfv(GLenum light, GLenum pname, const GLfloat *params) { glLightfv(light, pname, params); }
 WINAPK_GUEST_ABI void guest_glLightx(GLenum light, GLenum pname, GLfixed param) { glLightx(light, pname, param); }
+WINAPK_GUEST_ABI void guest_glLightxOES(GLenum light, GLenum pname, GLfixed param) { glLightxOES(light, pname, param); }
 WINAPK_GUEST_ABI void guest_glLightxv(GLenum light, GLenum pname, const GLfixed *params) { glLightxv(light, pname, params); }
+WINAPK_GUEST_ABI void guest_glLightxvOES(GLenum light, GLenum pname, const GLfixed *params) { glLightxvOES(light, pname, params); }
 WINAPK_GUEST_ABI void guest_glLineWidth(GLfloat width) { glLineWidth(width); }
 WINAPK_GUEST_ABI void guest_glLineWidthx(GLfixed width) { glLineWidthx(width); }
+WINAPK_GUEST_ABI void guest_glLineWidthxOES(GLfixed width) { glLineWidthxOES(width); }
 WINAPK_GUEST_ABI void guest_glLinkProgram(GLuint program) { glLinkProgram(program); }
 WINAPK_GUEST_ABI void guest_glLoadIdentity(void) { glLoadIdentity(); }
 WINAPK_GUEST_ABI void guest_glLoadMatrixf(const GLfloat *m) { glLoadMatrixf(m); }
 WINAPK_GUEST_ABI void guest_glLoadMatrixx(const GLfixed *m) { glLoadMatrixx(m); }
+WINAPK_GUEST_ABI void guest_glLoadMatrixxOES(const GLfixed *m) { glLoadMatrixxOES(m); }
+WINAPK_GUEST_ABI void guest_glLoadPaletteFromModelViewMatrixOES(void) { glLoadPaletteFromModelViewMatrixOES(); }
 WINAPK_GUEST_ABI void guest_glLogicOp(GLenum opcode) { glLogicOp(opcode); }
 WINAPK_GUEST_ABI void guest_glMakeImageHandleNonResidentNV(GLuint64 handle) { glMakeImageHandleNonResidentNV(handle); }
 WINAPK_GUEST_ABI void guest_glMakeImageHandleResidentNV(GLuint64 handle, GLenum access) { glMakeImageHandleResidentNV(handle, access); }
@@ -645,8 +790,11 @@ WINAPK_GUEST_ABI void * guest_glMapBufferRangeEXT(GLenum target, GLintptr offset
 WINAPK_GUEST_ABI void guest_glMaterialf(GLenum face, GLenum pname, GLfloat param) { glMaterialf(face, pname, param); }
 WINAPK_GUEST_ABI void guest_glMaterialfv(GLenum face, GLenum pname, const GLfloat *params) { glMaterialfv(face, pname, params); }
 WINAPK_GUEST_ABI void guest_glMaterialx(GLenum face, GLenum pname, GLfixed param) { glMaterialx(face, pname, param); }
+WINAPK_GUEST_ABI void guest_glMaterialxOES(GLenum face, GLenum pname, GLfixed param) { glMaterialxOES(face, pname, param); }
 WINAPK_GUEST_ABI void guest_glMaterialxv(GLenum face, GLenum pname, const GLfixed *param) { glMaterialxv(face, pname, param); }
+WINAPK_GUEST_ABI void guest_glMaterialxvOES(GLenum face, GLenum pname, const GLfixed *param) { glMaterialxvOES(face, pname, param); }
 WINAPK_GUEST_ABI void guest_glMatrixFrustumEXT(GLenum mode, GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar) { glMatrixFrustumEXT(mode, left, right, bottom, top, zNear, zFar); }
+WINAPK_GUEST_ABI void guest_glMatrixIndexPointerOES(GLint size, GLenum type, GLsizei stride, const void *pointer) { glMatrixIndexPointerOES(size, type, stride, pointer); }
 WINAPK_GUEST_ABI void guest_glMatrixLoad3x2fNV(GLenum matrixMode, const GLfloat *m) { glMatrixLoad3x2fNV(matrixMode, m); }
 WINAPK_GUEST_ABI void guest_glMatrixLoad3x3fNV(GLenum matrixMode, const GLfloat *m) { glMatrixLoad3x3fNV(matrixMode, m); }
 WINAPK_GUEST_ABI void guest_glMatrixLoadIdentityEXT(GLenum mode) { glMatrixLoadIdentityEXT(mode); }
@@ -681,6 +829,7 @@ WINAPK_GUEST_ABI void guest_glMinSampleShading(GLfloat value) { glMinSampleShadi
 WINAPK_GUEST_ABI void guest_glMinSampleShadingOES(GLfloat value) { glMinSampleShadingOES(value); }
 WINAPK_GUEST_ABI void guest_glMultMatrixf(const GLfloat *m) { glMultMatrixf(m); }
 WINAPK_GUEST_ABI void guest_glMultMatrixx(const GLfixed *m) { glMultMatrixx(m); }
+WINAPK_GUEST_ABI void guest_glMultMatrixxOES(const GLfixed *m) { glMultMatrixxOES(m); }
 WINAPK_GUEST_ABI void guest_glMultiDrawArraysEXT(GLenum mode, const GLint *first, const GLsizei *count, GLsizei primcount) { glMultiDrawArraysEXT(mode, first, count, primcount); }
 WINAPK_GUEST_ABI void guest_glMultiDrawArraysIndirectEXT(GLenum mode, const void *indirect, GLsizei drawcount, GLsizei stride) { glMultiDrawArraysIndirectEXT(mode, indirect, drawcount, stride); }
 WINAPK_GUEST_ABI void guest_glMultiDrawElementsBaseVertexEXT(GLenum mode, const GLsizei *count, GLenum type, const void *const*indices, GLsizei drawcount, const GLint *basevertex) { glMultiDrawElementsBaseVertexEXT(mode, count, type, indices, drawcount, basevertex); }
@@ -692,6 +841,7 @@ WINAPK_GUEST_ABI void guest_glMultiDrawMeshTasksIndirectEXT(GLintptr indirect, G
 WINAPK_GUEST_ABI void guest_glMultiDrawMeshTasksIndirectNV(GLintptr indirect, GLsizei drawcount, GLsizei stride) { glMultiDrawMeshTasksIndirectNV(indirect, drawcount, stride); }
 WINAPK_GUEST_ABI void guest_glMultiTexCoord4f(GLenum target, GLfloat s, GLfloat t, GLfloat r, GLfloat q) { glMultiTexCoord4f(target, s, t, r, q); }
 WINAPK_GUEST_ABI void guest_glMultiTexCoord4x(GLenum texture, GLfixed s, GLfixed t, GLfixed r, GLfixed q) { glMultiTexCoord4x(texture, s, t, r, q); }
+WINAPK_GUEST_ABI void guest_glMultiTexCoord4xOES(GLenum texture, GLfixed s, GLfixed t, GLfixed r, GLfixed q) { glMultiTexCoord4xOES(texture, s, t, r, q); }
 WINAPK_GUEST_ABI void guest_glNamedBufferAttachMemoryNV(GLuint buffer, GLuint memory, GLuint64 offset) { glNamedBufferAttachMemoryNV(buffer, memory, offset); }
 WINAPK_GUEST_ABI void guest_glNamedBufferPageCommitmentMemNV(GLuint buffer, GLintptr offset, GLsizeiptr size, GLuint memory, GLuint64 memOffset, GLboolean commit) { glNamedBufferPageCommitmentMemNV(buffer, offset, size, memory, memOffset, commit); }
 WINAPK_GUEST_ABI void guest_glNamedBufferStorageExternalEXT(GLuint buffer, GLintptr offset, GLsizeiptr size, GLeglClientBufferEXT clientBuffer, GLbitfield flags) { glNamedBufferStorageExternalEXT(buffer, offset, size, clientBuffer, flags); }
@@ -701,13 +851,16 @@ WINAPK_GUEST_ABI void guest_glNamedFramebufferTextureMultiviewOVR(GLuint framebu
 WINAPK_GUEST_ABI void guest_glNamedRenderbufferStorageMultisampleAdvancedAMD(GLuint renderbuffer, GLsizei samples, GLsizei storageSamples, GLenum internalformat, GLsizei width, GLsizei height) { glNamedRenderbufferStorageMultisampleAdvancedAMD(renderbuffer, samples, storageSamples, internalformat, width, height); }
 WINAPK_GUEST_ABI void guest_glNormal3f(GLfloat nx, GLfloat ny, GLfloat nz) { glNormal3f(nx, ny, nz); }
 WINAPK_GUEST_ABI void guest_glNormal3x(GLfixed nx, GLfixed ny, GLfixed nz) { glNormal3x(nx, ny, nz); }
+WINAPK_GUEST_ABI void guest_glNormal3xOES(GLfixed nx, GLfixed ny, GLfixed nz) { glNormal3xOES(nx, ny, nz); }
 WINAPK_GUEST_ABI void guest_glNormalPointer(GLenum type, GLsizei stride, const void *pointer) { glNormalPointer(type, stride, pointer); }
 WINAPK_GUEST_ABI void guest_glObjectLabel(GLenum identifier, GLuint name, GLsizei length, const GLchar *label) { glObjectLabel(identifier, name, length, label); }
 WINAPK_GUEST_ABI void guest_glObjectLabelKHR(GLenum identifier, GLuint name, GLsizei length, const GLchar *label) { glObjectLabelKHR(identifier, name, length, label); }
 WINAPK_GUEST_ABI void guest_glObjectPtrLabel(const void *ptr, GLsizei length, const GLchar *label) { glObjectPtrLabel(ptr, length, label); }
 WINAPK_GUEST_ABI void guest_glObjectPtrLabelKHR(const void *ptr, GLsizei length, const GLchar *label) { glObjectPtrLabelKHR(ptr, length, label); }
 WINAPK_GUEST_ABI void guest_glOrthof(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f) { glOrthof(l, r, b, t, n, f); }
+WINAPK_GUEST_ABI void guest_glOrthofOES(GLfloat l, GLfloat r, GLfloat b, GLfloat t, GLfloat n, GLfloat f) { glOrthofOES(l, r, b, t, n, f); }
 WINAPK_GUEST_ABI void guest_glOrthox(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f) { glOrthox(l, r, b, t, n, f); }
+WINAPK_GUEST_ABI void guest_glOrthoxOES(GLfixed l, GLfixed r, GLfixed b, GLfixed t, GLfixed n, GLfixed f) { glOrthoxOES(l, r, b, t, n, f); }
 WINAPK_GUEST_ABI void guest_glPatchParameteri(GLenum pname, GLint value) { glPatchParameteri(pname, value); }
 WINAPK_GUEST_ABI void guest_glPatchParameteriEXT(GLenum pname, GLint value) { glPatchParameteriEXT(pname, value); }
 WINAPK_GUEST_ABI void guest_glPatchParameteriOES(GLenum pname, GLint value) { glPatchParameteriOES(pname, value); }
@@ -735,14 +888,18 @@ WINAPK_GUEST_ABI GLboolean guest_glPointAlongPathNV(GLuint path, GLsizei startSe
 WINAPK_GUEST_ABI void guest_glPointParameterf(GLenum pname, GLfloat param) { glPointParameterf(pname, param); }
 WINAPK_GUEST_ABI void guest_glPointParameterfv(GLenum pname, const GLfloat *params) { glPointParameterfv(pname, params); }
 WINAPK_GUEST_ABI void guest_glPointParameterx(GLenum pname, GLfixed param) { glPointParameterx(pname, param); }
+WINAPK_GUEST_ABI void guest_glPointParameterxOES(GLenum pname, GLfixed param) { glPointParameterxOES(pname, param); }
 WINAPK_GUEST_ABI void guest_glPointParameterxv(GLenum pname, const GLfixed *params) { glPointParameterxv(pname, params); }
+WINAPK_GUEST_ABI void guest_glPointParameterxvOES(GLenum pname, const GLfixed *params) { glPointParameterxvOES(pname, params); }
 WINAPK_GUEST_ABI void guest_glPointSize(GLfloat size) { glPointSize(size); }
 WINAPK_GUEST_ABI void guest_glPointSizePointerOES(GLenum type, GLsizei stride, const void *pointer) { glPointSizePointerOES(type, stride, pointer); }
 WINAPK_GUEST_ABI void guest_glPointSizex(GLfixed size) { glPointSizex(size); }
+WINAPK_GUEST_ABI void guest_glPointSizexOES(GLfixed size) { glPointSizexOES(size); }
 WINAPK_GUEST_ABI void guest_glPolygonModeNV(GLenum face, GLenum mode) { glPolygonModeNV(face, mode); }
 WINAPK_GUEST_ABI void guest_glPolygonOffset(GLfloat factor, GLfloat units) { glPolygonOffset(factor, units); }
 WINAPK_GUEST_ABI void guest_glPolygonOffsetClampEXT(GLfloat factor, GLfloat units, GLfloat clamp) { glPolygonOffsetClampEXT(factor, units, clamp); }
 WINAPK_GUEST_ABI void guest_glPolygonOffsetx(GLfixed factor, GLfixed units) { glPolygonOffsetx(factor, units); }
+WINAPK_GUEST_ABI void guest_glPolygonOffsetxOES(GLfixed factor, GLfixed units) { glPolygonOffsetxOES(factor, units); }
 WINAPK_GUEST_ABI void guest_glPopDebugGroup(void) { glPopDebugGroup(); }
 WINAPK_GUEST_ABI void guest_glPopDebugGroupKHR(void) { glPopDebugGroupKHR(); }
 WINAPK_GUEST_ABI void guest_glPopGroupMarkerEXT(void) { glPopGroupMarkerEXT(); }
@@ -846,6 +1003,7 @@ WINAPK_GUEST_ABI void guest_glPushDebugGroupKHR(GLenum source, GLuint id, GLsize
 WINAPK_GUEST_ABI void guest_glPushGroupMarkerEXT(GLsizei length, const GLchar *marker) { glPushGroupMarkerEXT(length, marker); }
 WINAPK_GUEST_ABI void guest_glPushMatrix(void) { glPushMatrix(); }
 WINAPK_GUEST_ABI void guest_glQueryCounterEXT(GLuint id, GLenum target) { glQueryCounterEXT(id, target); }
+WINAPK_GUEST_ABI GLbitfield guest_glQueryMatrixxOES(GLfixed *mantissa, GLint *exponent) { return glQueryMatrixxOES(mantissa, exponent); }
 WINAPK_GUEST_ABI void guest_glRasterSamplesEXT(GLuint samples, GLboolean fixedsamplelocations) { glRasterSamplesEXT(samples, fixedsamplelocations); }
 WINAPK_GUEST_ABI void guest_glReadBuffer(GLenum src) { glReadBuffer(src); }
 WINAPK_GUEST_ABI void guest_glReadBufferIndexedEXT(GLenum src, GLint index) { glReadBufferIndexedEXT(src, index); }
@@ -864,14 +1022,17 @@ WINAPK_GUEST_ABI void guest_glRenderbufferStorageMultisampleAdvancedAMD(GLenum t
 WINAPK_GUEST_ABI void guest_glRenderbufferStorageMultisampleEXT(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height) { glRenderbufferStorageMultisampleEXT(target, samples, internalformat, width, height); }
 WINAPK_GUEST_ABI void guest_glRenderbufferStorageMultisampleIMG(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height) { glRenderbufferStorageMultisampleIMG(target, samples, internalformat, width, height); }
 WINAPK_GUEST_ABI void guest_glRenderbufferStorageMultisampleNV(GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height) { glRenderbufferStorageMultisampleNV(target, samples, internalformat, width, height); }
+WINAPK_GUEST_ABI void guest_glRenderbufferStorageOES(GLenum target, GLenum internalformat, GLsizei width, GLsizei height) { glRenderbufferStorageOES(target, internalformat, width, height); }
 WINAPK_GUEST_ABI void guest_glResetMemoryObjectParameterNV(GLuint memory, GLenum pname) { glResetMemoryObjectParameterNV(memory, pname); }
 WINAPK_GUEST_ABI void guest_glResolveDepthValuesNV(void) { glResolveDepthValuesNV(); }
 WINAPK_GUEST_ABI void guest_glResolveMultisampleFramebufferAPPLE(void) { glResolveMultisampleFramebufferAPPLE(); }
 WINAPK_GUEST_ABI void guest_glResumeTransformFeedback(void) { glResumeTransformFeedback(); }
 WINAPK_GUEST_ABI void guest_glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z) { glRotatef(angle, x, y, z); }
 WINAPK_GUEST_ABI void guest_glRotatex(GLfixed angle, GLfixed x, GLfixed y, GLfixed z) { glRotatex(angle, x, y, z); }
+WINAPK_GUEST_ABI void guest_glRotatexOES(GLfixed angle, GLfixed x, GLfixed y, GLfixed z) { glRotatexOES(angle, x, y, z); }
 WINAPK_GUEST_ABI void guest_glSampleCoverage(GLfloat value, GLboolean invert) { glSampleCoverage(value, invert); }
 WINAPK_GUEST_ABI void guest_glSampleCoveragex(GLclampx value, GLboolean invert) { glSampleCoveragex(value, invert); }
+WINAPK_GUEST_ABI void guest_glSampleCoveragexOES(GLclampx value, GLboolean invert) { glSampleCoveragexOES(value, invert); }
 WINAPK_GUEST_ABI void guest_glSampleMaski(GLuint maskNumber, GLbitfield mask) { glSampleMaski(maskNumber, mask); }
 WINAPK_GUEST_ABI void guest_glSamplerParameterIiv(GLuint sampler, GLenum pname, const GLint *param) { glSamplerParameterIiv(sampler, pname, param); }
 WINAPK_GUEST_ABI void guest_glSamplerParameterIivEXT(GLuint sampler, GLenum pname, const GLint *param) { glSamplerParameterIivEXT(sampler, pname, param); }
@@ -885,6 +1046,7 @@ WINAPK_GUEST_ABI void guest_glSamplerParameteri(GLuint sampler, GLenum pname, GL
 WINAPK_GUEST_ABI void guest_glSamplerParameteriv(GLuint sampler, GLenum pname, const GLint *param) { glSamplerParameteriv(sampler, pname, param); }
 WINAPK_GUEST_ABI void guest_glScalef(GLfloat x, GLfloat y, GLfloat z) { glScalef(x, y, z); }
 WINAPK_GUEST_ABI void guest_glScalex(GLfixed x, GLfixed y, GLfixed z) { glScalex(x, y, z); }
+WINAPK_GUEST_ABI void guest_glScalexOES(GLfixed x, GLfixed y, GLfixed z) { glScalexOES(x, y, z); }
 WINAPK_GUEST_ABI void guest_glScissor(GLint x, GLint y, GLsizei width, GLsizei height) { glScissor(x, y, width, height); }
 WINAPK_GUEST_ABI void guest_glScissorArrayvNV(GLuint first, GLsizei count, const GLint *v) { glScissorArrayvNV(first, count, v); }
 WINAPK_GUEST_ABI void guest_glScissorArrayvOES(GLuint first, GLsizei count, const GLint *v) { glScissorArrayvOES(first, count, v); }
@@ -941,9 +1103,17 @@ WINAPK_GUEST_ABI void guest_glTexEnvfv(GLenum target, GLenum pname, const GLfloa
 WINAPK_GUEST_ABI void guest_glTexEnvi(GLenum target, GLenum pname, GLint param) { glTexEnvi(target, pname, param); }
 WINAPK_GUEST_ABI void guest_glTexEnviv(GLenum target, GLenum pname, const GLint *params) { glTexEnviv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glTexEnvx(GLenum target, GLenum pname, GLfixed param) { glTexEnvx(target, pname, param); }
+WINAPK_GUEST_ABI void guest_glTexEnvxOES(GLenum target, GLenum pname, GLfixed param) { glTexEnvxOES(target, pname, param); }
 WINAPK_GUEST_ABI void guest_glTexEnvxv(GLenum target, GLenum pname, const GLfixed *params) { glTexEnvxv(target, pname, params); }
+WINAPK_GUEST_ABI void guest_glTexEnvxvOES(GLenum target, GLenum pname, const GLfixed *params) { glTexEnvxvOES(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glTexEstimateMotionQCOM(GLuint ref, GLuint target, GLuint output) { glTexEstimateMotionQCOM(ref, target, output); }
 WINAPK_GUEST_ABI void guest_glTexEstimateMotionRegionsQCOM(GLuint ref, GLuint target, GLuint output, GLuint mask) { glTexEstimateMotionRegionsQCOM(ref, target, output, mask); }
+WINAPK_GUEST_ABI void guest_glTexGenfOES(GLenum coord, GLenum pname, GLfloat param) { glTexGenfOES(coord, pname, param); }
+WINAPK_GUEST_ABI void guest_glTexGenfvOES(GLenum coord, GLenum pname, const GLfloat *params) { glTexGenfvOES(coord, pname, params); }
+WINAPK_GUEST_ABI void guest_glTexGeniOES(GLenum coord, GLenum pname, GLint param) { glTexGeniOES(coord, pname, param); }
+WINAPK_GUEST_ABI void guest_glTexGenivOES(GLenum coord, GLenum pname, const GLint *params) { glTexGenivOES(coord, pname, params); }
+WINAPK_GUEST_ABI void guest_glTexGenxOES(GLenum coord, GLenum pname, GLfixed param) { glTexGenxOES(coord, pname, param); }
+WINAPK_GUEST_ABI void guest_glTexGenxvOES(GLenum coord, GLenum pname, const GLfixed *params) { glTexGenxvOES(coord, pname, params); }
 WINAPK_GUEST_ABI void guest_glTexImage2D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLint border, GLenum format, GLenum type, const void *pixels) { glTexImage2D(target, level, internalformat, width, height, border, format, type, pixels); }
 WINAPK_GUEST_ABI void guest_glTexImage3D(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels) { glTexImage3D(target, level, internalformat, width, height, depth, border, format, type, pixels); }
 WINAPK_GUEST_ABI void guest_glTexImage3DOES(GLenum target, GLint level, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels) { glTexImage3DOES(target, level, internalformat, width, height, depth, border, format, type, pixels); }
@@ -960,7 +1130,9 @@ WINAPK_GUEST_ABI void guest_glTexParameterfv(GLenum target, GLenum pname, const 
 WINAPK_GUEST_ABI void guest_glTexParameteri(GLenum target, GLenum pname, GLint param) { glTexParameteri(target, pname, param); }
 WINAPK_GUEST_ABI void guest_glTexParameteriv(GLenum target, GLenum pname, const GLint *params) { glTexParameteriv(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glTexParameterx(GLenum target, GLenum pname, GLfixed param) { glTexParameterx(target, pname, param); }
+WINAPK_GUEST_ABI void guest_glTexParameterxOES(GLenum target, GLenum pname, GLfixed param) { glTexParameterxOES(target, pname, param); }
 WINAPK_GUEST_ABI void guest_glTexParameterxv(GLenum target, GLenum pname, const GLfixed *params) { glTexParameterxv(target, pname, params); }
+WINAPK_GUEST_ABI void guest_glTexParameterxvOES(GLenum target, GLenum pname, const GLfixed *params) { glTexParameterxvOES(target, pname, params); }
 WINAPK_GUEST_ABI void guest_glTexStorage1DEXT(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width) { glTexStorage1DEXT(target, levels, internalformat, width); }
 WINAPK_GUEST_ABI void guest_glTexStorage2D(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height) { glTexStorage2D(target, levels, internalformat, width, height); }
 WINAPK_GUEST_ABI void guest_glTexStorage2DEXT(GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height) { glTexStorage2DEXT(target, levels, internalformat, width, height); }
@@ -995,6 +1167,7 @@ WINAPK_GUEST_ABI void guest_glTransformFeedbackVaryings(GLuint program, GLsizei 
 WINAPK_GUEST_ABI void guest_glTransformPathNV(GLuint resultPath, GLuint srcPath, GLenum transformType, const GLfloat *transformValues) { glTransformPathNV(resultPath, srcPath, transformType, transformValues); }
 WINAPK_GUEST_ABI void guest_glTranslatef(GLfloat x, GLfloat y, GLfloat z) { glTranslatef(x, y, z); }
 WINAPK_GUEST_ABI void guest_glTranslatex(GLfixed x, GLfixed y, GLfixed z) { glTranslatex(x, y, z); }
+WINAPK_GUEST_ABI void guest_glTranslatexOES(GLfixed x, GLfixed y, GLfixed z) { glTranslatexOES(x, y, z); }
 WINAPK_GUEST_ABI void guest_glUniform1f(GLint location, GLfloat v0) { glUniform1f(location, v0); }
 WINAPK_GUEST_ABI void guest_glUniform1fv(GLint location, GLsizei count, const GLfloat *value) { glUniform1fv(location, count, value); }
 WINAPK_GUEST_ABI void guest_glUniform1i(GLint location, GLint v0) { glUniform1i(location, v0); }
@@ -1100,6 +1273,7 @@ WINAPK_GUEST_ABI void guest_glWaitSync(GLsync sync, GLbitfield flags, GLuint64 t
 WINAPK_GUEST_ABI void guest_glWaitSyncAPPLE(GLsync sync, GLbitfield flags, GLuint64 timeout) { glWaitSyncAPPLE(sync, flags, timeout); }
 WINAPK_GUEST_ABI void guest_glWaitVkSemaphoreNV(GLuint64 vkSemaphore) { glWaitVkSemaphoreNV(vkSemaphore); }
 WINAPK_GUEST_ABI void guest_glWeightPathsNV(GLuint resultPath, GLsizei numPaths, const GLuint *paths, const GLfloat *weights) { glWeightPathsNV(resultPath, numPaths, paths, weights); }
+WINAPK_GUEST_ABI void guest_glWeightPointerOES(GLint size, GLenum type, GLsizei stride, const void *pointer) { glWeightPointerOES(size, type, stride, pointer); }
 WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, const GLint *box) { glWindowRectanglesEXT(mode, count, box); }
 
 #define WINAPK_GUEST_GL_SYMBOLS \
@@ -1137,6 +1311,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glAlphaFunc", reinterpret_cast<void*>(&guest_glAlphaFunc)}, \
     {"glAlphaFuncQCOM", reinterpret_cast<void*>(&guest_glAlphaFuncQCOM)}, \
     {"glAlphaFuncx", reinterpret_cast<void*>(&guest_glAlphaFuncx)}, \
+    {"glAlphaFuncxOES", reinterpret_cast<void*>(&guest_glAlphaFuncxOES)}, \
     {"glApplyFramebufferAttachmentCMAAINTEL", reinterpret_cast<void*>(&guest_glApplyFramebufferAttachmentCMAAINTEL)}, \
     {"glAttachShader", reinterpret_cast<void*>(&guest_glAttachShader)}, \
     {"glBeginConditionalRenderNV", reinterpret_cast<void*>(&guest_glBeginConditionalRenderNV)}, \
@@ -1152,10 +1327,12 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glBindFragDataLocationEXT", reinterpret_cast<void*>(&guest_glBindFragDataLocationEXT)}, \
     {"glBindFragDataLocationIndexedEXT", reinterpret_cast<void*>(&guest_glBindFragDataLocationIndexedEXT)}, \
     {"glBindFramebuffer", reinterpret_cast<void*>(&guest_glBindFramebuffer)}, \
+    {"glBindFramebufferOES", reinterpret_cast<void*>(&guest_glBindFramebufferOES)}, \
     {"glBindImageTexture", reinterpret_cast<void*>(&guest_glBindImageTexture)}, \
     {"glBindProgramPipeline", reinterpret_cast<void*>(&guest_glBindProgramPipeline)}, \
     {"glBindProgramPipelineEXT", reinterpret_cast<void*>(&guest_glBindProgramPipelineEXT)}, \
     {"glBindRenderbuffer", reinterpret_cast<void*>(&guest_glBindRenderbuffer)}, \
+    {"glBindRenderbufferOES", reinterpret_cast<void*>(&guest_glBindRenderbufferOES)}, \
     {"glBindSampler", reinterpret_cast<void*>(&guest_glBindSampler)}, \
     {"glBindShadingRateImageNV", reinterpret_cast<void*>(&guest_glBindShadingRateImageNV)}, \
     {"glBindTexture", reinterpret_cast<void*>(&guest_glBindTexture)}, \
@@ -1168,7 +1345,9 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glBlendBarrierNV", reinterpret_cast<void*>(&guest_glBlendBarrierNV)}, \
     {"glBlendColor", reinterpret_cast<void*>(&guest_glBlendColor)}, \
     {"glBlendEquation", reinterpret_cast<void*>(&guest_glBlendEquation)}, \
+    {"glBlendEquationOES", reinterpret_cast<void*>(&guest_glBlendEquationOES)}, \
     {"glBlendEquationSeparate", reinterpret_cast<void*>(&guest_glBlendEquationSeparate)}, \
+    {"glBlendEquationSeparateOES", reinterpret_cast<void*>(&guest_glBlendEquationSeparateOES)}, \
     {"glBlendEquationSeparatei", reinterpret_cast<void*>(&guest_glBlendEquationSeparatei)}, \
     {"glBlendEquationSeparateiEXT", reinterpret_cast<void*>(&guest_glBlendEquationSeparateiEXT)}, \
     {"glBlendEquationSeparateiOES", reinterpret_cast<void*>(&guest_glBlendEquationSeparateiOES)}, \
@@ -1177,6 +1356,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glBlendEquationiOES", reinterpret_cast<void*>(&guest_glBlendEquationiOES)}, \
     {"glBlendFunc", reinterpret_cast<void*>(&guest_glBlendFunc)}, \
     {"glBlendFuncSeparate", reinterpret_cast<void*>(&guest_glBlendFuncSeparate)}, \
+    {"glBlendFuncSeparateOES", reinterpret_cast<void*>(&guest_glBlendFuncSeparateOES)}, \
     {"glBlendFuncSeparatei", reinterpret_cast<void*>(&guest_glBlendFuncSeparatei)}, \
     {"glBlendFuncSeparateiEXT", reinterpret_cast<void*>(&guest_glBlendFuncSeparateiEXT)}, \
     {"glBlendFuncSeparateiOES", reinterpret_cast<void*>(&guest_glBlendFuncSeparateiOES)}, \
@@ -1197,6 +1377,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glBufferStorageMemEXT", reinterpret_cast<void*>(&guest_glBufferStorageMemEXT)}, \
     {"glBufferSubData", reinterpret_cast<void*>(&guest_glBufferSubData)}, \
     {"glCheckFramebufferStatus", reinterpret_cast<void*>(&guest_glCheckFramebufferStatus)}, \
+    {"glCheckFramebufferStatusOES", reinterpret_cast<void*>(&guest_glCheckFramebufferStatusOES)}, \
     {"glClear", reinterpret_cast<void*>(&guest_glClear)}, \
     {"glClearBufferfi", reinterpret_cast<void*>(&guest_glClearBufferfi)}, \
     {"glClearBufferfv", reinterpret_cast<void*>(&guest_glClearBufferfv)}, \
@@ -1204,8 +1385,11 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glClearBufferuiv", reinterpret_cast<void*>(&guest_glClearBufferuiv)}, \
     {"glClearColor", reinterpret_cast<void*>(&guest_glClearColor)}, \
     {"glClearColorx", reinterpret_cast<void*>(&guest_glClearColorx)}, \
+    {"glClearColorxOES", reinterpret_cast<void*>(&guest_glClearColorxOES)}, \
     {"glClearDepthf", reinterpret_cast<void*>(&guest_glClearDepthf)}, \
+    {"glClearDepthfOES", reinterpret_cast<void*>(&guest_glClearDepthfOES)}, \
     {"glClearDepthx", reinterpret_cast<void*>(&guest_glClearDepthx)}, \
+    {"glClearDepthxOES", reinterpret_cast<void*>(&guest_glClearDepthxOES)}, \
     {"glClearPixelLocalStorageuiEXT", reinterpret_cast<void*>(&guest_glClearPixelLocalStorageuiEXT)}, \
     {"glClearStencil", reinterpret_cast<void*>(&guest_glClearStencil)}, \
     {"glClearTexImageEXT", reinterpret_cast<void*>(&guest_glClearTexImageEXT)}, \
@@ -1215,10 +1399,15 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glClientWaitSyncAPPLE", reinterpret_cast<void*>(&guest_glClientWaitSyncAPPLE)}, \
     {"glClipControlEXT", reinterpret_cast<void*>(&guest_glClipControlEXT)}, \
     {"glClipPlanef", reinterpret_cast<void*>(&guest_glClipPlanef)}, \
+    {"glClipPlanefIMG", reinterpret_cast<void*>(&guest_glClipPlanefIMG)}, \
+    {"glClipPlanefOES", reinterpret_cast<void*>(&guest_glClipPlanefOES)}, \
     {"glClipPlanex", reinterpret_cast<void*>(&guest_glClipPlanex)}, \
+    {"glClipPlanexIMG", reinterpret_cast<void*>(&guest_glClipPlanexIMG)}, \
+    {"glClipPlanexOES", reinterpret_cast<void*>(&guest_glClipPlanexOES)}, \
     {"glColor4f", reinterpret_cast<void*>(&guest_glColor4f)}, \
     {"glColor4ub", reinterpret_cast<void*>(&guest_glColor4ub)}, \
     {"glColor4x", reinterpret_cast<void*>(&guest_glColor4x)}, \
+    {"glColor4xOES", reinterpret_cast<void*>(&guest_glColor4xOES)}, \
     {"glColorMask", reinterpret_cast<void*>(&guest_glColorMask)}, \
     {"glColorMaski", reinterpret_cast<void*>(&guest_glColorMaski)}, \
     {"glColorMaskiEXT", reinterpret_cast<void*>(&guest_glColorMaskiEXT)}, \
@@ -1259,6 +1448,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glCreateShaderProgramv", reinterpret_cast<void*>(&guest_glCreateShaderProgramv)}, \
     {"glCreateShaderProgramvEXT", reinterpret_cast<void*>(&guest_glCreateShaderProgramvEXT)}, \
     {"glCullFace", reinterpret_cast<void*>(&guest_glCullFace)}, \
+    {"glCurrentPaletteMatrixOES", reinterpret_cast<void*>(&guest_glCurrentPaletteMatrixOES)}, \
     {"glDebugMessageControl", reinterpret_cast<void*>(&guest_glDebugMessageControl)}, \
     {"glDebugMessageControlKHR", reinterpret_cast<void*>(&guest_glDebugMessageControlKHR)}, \
     {"glDebugMessageInsert", reinterpret_cast<void*>(&guest_glDebugMessageInsert)}, \
@@ -1266,6 +1456,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glDeleteBuffers", reinterpret_cast<void*>(&guest_glDeleteBuffers)}, \
     {"glDeleteFencesNV", reinterpret_cast<void*>(&guest_glDeleteFencesNV)}, \
     {"glDeleteFramebuffers", reinterpret_cast<void*>(&guest_glDeleteFramebuffers)}, \
+    {"glDeleteFramebuffersOES", reinterpret_cast<void*>(&guest_glDeleteFramebuffersOES)}, \
     {"glDeleteMemoryObjectsEXT", reinterpret_cast<void*>(&guest_glDeleteMemoryObjectsEXT)}, \
     {"glDeletePathsNV", reinterpret_cast<void*>(&guest_glDeletePathsNV)}, \
     {"glDeletePerfMonitorsAMD", reinterpret_cast<void*>(&guest_glDeletePerfMonitorsAMD)}, \
@@ -1276,6 +1467,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glDeleteQueries", reinterpret_cast<void*>(&guest_glDeleteQueries)}, \
     {"glDeleteQueriesEXT", reinterpret_cast<void*>(&guest_glDeleteQueriesEXT)}, \
     {"glDeleteRenderbuffers", reinterpret_cast<void*>(&guest_glDeleteRenderbuffers)}, \
+    {"glDeleteRenderbuffersOES", reinterpret_cast<void*>(&guest_glDeleteRenderbuffersOES)}, \
     {"glDeleteSamplers", reinterpret_cast<void*>(&guest_glDeleteSamplers)}, \
     {"glDeleteSemaphoresEXT", reinterpret_cast<void*>(&guest_glDeleteSemaphoresEXT)}, \
     {"glDeleteShader", reinterpret_cast<void*>(&guest_glDeleteShader)}, \
@@ -1292,7 +1484,9 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glDepthRangeIndexedfNV", reinterpret_cast<void*>(&guest_glDepthRangeIndexedfNV)}, \
     {"glDepthRangeIndexedfOES", reinterpret_cast<void*>(&guest_glDepthRangeIndexedfOES)}, \
     {"glDepthRangef", reinterpret_cast<void*>(&guest_glDepthRangef)}, \
+    {"glDepthRangefOES", reinterpret_cast<void*>(&guest_glDepthRangefOES)}, \
     {"glDepthRangex", reinterpret_cast<void*>(&guest_glDepthRangex)}, \
+    {"glDepthRangexOES", reinterpret_cast<void*>(&guest_glDepthRangexOES)}, \
     {"glDetachShader", reinterpret_cast<void*>(&guest_glDetachShader)}, \
     {"glDisable", reinterpret_cast<void*>(&guest_glDisable)}, \
     {"glDisableClientState", reinterpret_cast<void*>(&guest_glDisableClientState)}, \
@@ -1338,6 +1532,14 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glDrawRangeElementsBaseVertex", reinterpret_cast<void*>(&guest_glDrawRangeElementsBaseVertex)}, \
     {"glDrawRangeElementsBaseVertexEXT", reinterpret_cast<void*>(&guest_glDrawRangeElementsBaseVertexEXT)}, \
     {"glDrawRangeElementsBaseVertexOES", reinterpret_cast<void*>(&guest_glDrawRangeElementsBaseVertexOES)}, \
+    {"glDrawTexfOES", reinterpret_cast<void*>(&guest_glDrawTexfOES)}, \
+    {"glDrawTexfvOES", reinterpret_cast<void*>(&guest_glDrawTexfvOES)}, \
+    {"glDrawTexiOES", reinterpret_cast<void*>(&guest_glDrawTexiOES)}, \
+    {"glDrawTexivOES", reinterpret_cast<void*>(&guest_glDrawTexivOES)}, \
+    {"glDrawTexsOES", reinterpret_cast<void*>(&guest_glDrawTexsOES)}, \
+    {"glDrawTexsvOES", reinterpret_cast<void*>(&guest_glDrawTexsvOES)}, \
+    {"glDrawTexxOES", reinterpret_cast<void*>(&guest_glDrawTexxOES)}, \
+    {"glDrawTexxvOES", reinterpret_cast<void*>(&guest_glDrawTexxvOES)}, \
     {"glDrawTransformFeedbackEXT", reinterpret_cast<void*>(&guest_glDrawTransformFeedbackEXT)}, \
     {"glDrawTransformFeedbackInstancedEXT", reinterpret_cast<void*>(&guest_glDrawTransformFeedbackInstancedEXT)}, \
     {"glDrawVkImageNV", reinterpret_cast<void*>(&guest_glDrawVkImageNV)}, \
@@ -1383,7 +1585,9 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glFogf", reinterpret_cast<void*>(&guest_glFogf)}, \
     {"glFogfv", reinterpret_cast<void*>(&guest_glFogfv)}, \
     {"glFogx", reinterpret_cast<void*>(&guest_glFogx)}, \
+    {"glFogxOES", reinterpret_cast<void*>(&guest_glFogxOES)}, \
     {"glFogxv", reinterpret_cast<void*>(&guest_glFogxv)}, \
+    {"glFogxvOES", reinterpret_cast<void*>(&guest_glFogxvOES)}, \
     {"glFragmentCoverageColorNV", reinterpret_cast<void*>(&guest_glFragmentCoverageColorNV)}, \
     {"glFramebufferFetchBarrierEXT", reinterpret_cast<void*>(&guest_glFramebufferFetchBarrierEXT)}, \
     {"glFramebufferFetchBarrierQCOM", reinterpret_cast<void*>(&guest_glFramebufferFetchBarrierQCOM)}, \
@@ -1393,6 +1597,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glFramebufferParameteriMESA", reinterpret_cast<void*>(&guest_glFramebufferParameteriMESA)}, \
     {"glFramebufferPixelLocalStorageSizeEXT", reinterpret_cast<void*>(&guest_glFramebufferPixelLocalStorageSizeEXT)}, \
     {"glFramebufferRenderbuffer", reinterpret_cast<void*>(&guest_glFramebufferRenderbuffer)}, \
+    {"glFramebufferRenderbufferOES", reinterpret_cast<void*>(&guest_glFramebufferRenderbufferOES)}, \
     {"glFramebufferSampleLocationsfvNV", reinterpret_cast<void*>(&guest_glFramebufferSampleLocationsfvNV)}, \
     {"glFramebufferShadingRateEXT", reinterpret_cast<void*>(&guest_glFramebufferShadingRateEXT)}, \
     {"glFramebufferTexture", reinterpret_cast<void*>(&guest_glFramebufferTexture)}, \
@@ -1400,6 +1605,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glFramebufferTexture2DDownsampleIMG", reinterpret_cast<void*>(&guest_glFramebufferTexture2DDownsampleIMG)}, \
     {"glFramebufferTexture2DMultisampleEXT", reinterpret_cast<void*>(&guest_glFramebufferTexture2DMultisampleEXT)}, \
     {"glFramebufferTexture2DMultisampleIMG", reinterpret_cast<void*>(&guest_glFramebufferTexture2DMultisampleIMG)}, \
+    {"glFramebufferTexture2DOES", reinterpret_cast<void*>(&guest_glFramebufferTexture2DOES)}, \
     {"glFramebufferTexture3DOES", reinterpret_cast<void*>(&guest_glFramebufferTexture3DOES)}, \
     {"glFramebufferTextureEXT", reinterpret_cast<void*>(&guest_glFramebufferTextureEXT)}, \
     {"glFramebufferTextureLayer", reinterpret_cast<void*>(&guest_glFramebufferTextureLayer)}, \
@@ -1409,10 +1615,13 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glFramebufferTextureOES", reinterpret_cast<void*>(&guest_glFramebufferTextureOES)}, \
     {"glFrontFace", reinterpret_cast<void*>(&guest_glFrontFace)}, \
     {"glFrustumf", reinterpret_cast<void*>(&guest_glFrustumf)}, \
+    {"glFrustumfOES", reinterpret_cast<void*>(&guest_glFrustumfOES)}, \
     {"glFrustumx", reinterpret_cast<void*>(&guest_glFrustumx)}, \
+    {"glFrustumxOES", reinterpret_cast<void*>(&guest_glFrustumxOES)}, \
     {"glGenBuffers", reinterpret_cast<void*>(&guest_glGenBuffers)}, \
     {"glGenFencesNV", reinterpret_cast<void*>(&guest_glGenFencesNV)}, \
     {"glGenFramebuffers", reinterpret_cast<void*>(&guest_glGenFramebuffers)}, \
+    {"glGenFramebuffersOES", reinterpret_cast<void*>(&guest_glGenFramebuffersOES)}, \
     {"glGenPathsNV", reinterpret_cast<void*>(&guest_glGenPathsNV)}, \
     {"glGenPerfMonitorsAMD", reinterpret_cast<void*>(&guest_glGenPerfMonitorsAMD)}, \
     {"glGenProgramPipelines", reinterpret_cast<void*>(&guest_glGenProgramPipelines)}, \
@@ -1420,6 +1629,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGenQueries", reinterpret_cast<void*>(&guest_glGenQueries)}, \
     {"glGenQueriesEXT", reinterpret_cast<void*>(&guest_glGenQueriesEXT)}, \
     {"glGenRenderbuffers", reinterpret_cast<void*>(&guest_glGenRenderbuffers)}, \
+    {"glGenRenderbuffersOES", reinterpret_cast<void*>(&guest_glGenRenderbuffersOES)}, \
     {"glGenSamplers", reinterpret_cast<void*>(&guest_glGenSamplers)}, \
     {"glGenSemaphoresEXT", reinterpret_cast<void*>(&guest_glGenSemaphoresEXT)}, \
     {"glGenTextures", reinterpret_cast<void*>(&guest_glGenTextures)}, \
@@ -1427,6 +1637,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGenVertexArrays", reinterpret_cast<void*>(&guest_glGenVertexArrays)}, \
     {"glGenVertexArraysOES", reinterpret_cast<void*>(&guest_glGenVertexArraysOES)}, \
     {"glGenerateMipmap", reinterpret_cast<void*>(&guest_glGenerateMipmap)}, \
+    {"glGenerateMipmapOES", reinterpret_cast<void*>(&guest_glGenerateMipmapOES)}, \
     {"glGetActiveAttrib", reinterpret_cast<void*>(&guest_glGetActiveAttrib)}, \
     {"glGetActiveUniform", reinterpret_cast<void*>(&guest_glGetActiveUniform)}, \
     {"glGetActiveUniformBlockName", reinterpret_cast<void*>(&guest_glGetActiveUniformBlockName)}, \
@@ -1441,7 +1652,9 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetBufferPointerv", reinterpret_cast<void*>(&guest_glGetBufferPointerv)}, \
     {"glGetBufferPointervOES", reinterpret_cast<void*>(&guest_glGetBufferPointervOES)}, \
     {"glGetClipPlanef", reinterpret_cast<void*>(&guest_glGetClipPlanef)}, \
+    {"glGetClipPlanefOES", reinterpret_cast<void*>(&guest_glGetClipPlanefOES)}, \
     {"glGetClipPlanex", reinterpret_cast<void*>(&guest_glGetClipPlanex)}, \
+    {"glGetClipPlanexOES", reinterpret_cast<void*>(&guest_glGetClipPlanexOES)}, \
     {"glGetCoverageModulationTableNV", reinterpret_cast<void*>(&guest_glGetCoverageModulationTableNV)}, \
     {"glGetDebugMessageLog", reinterpret_cast<void*>(&guest_glGetDebugMessageLog)}, \
     {"glGetDebugMessageLogKHR", reinterpret_cast<void*>(&guest_glGetDebugMessageLogKHR)}, \
@@ -1451,6 +1664,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetFenceivNV", reinterpret_cast<void*>(&guest_glGetFenceivNV)}, \
     {"glGetFirstPerfQueryIdINTEL", reinterpret_cast<void*>(&guest_glGetFirstPerfQueryIdINTEL)}, \
     {"glGetFixedv", reinterpret_cast<void*>(&guest_glGetFixedv)}, \
+    {"glGetFixedvOES", reinterpret_cast<void*>(&guest_glGetFixedvOES)}, \
     {"glGetFloati_vNV", reinterpret_cast<void*>(&guest_glGetFloati_vNV)}, \
     {"glGetFloati_vOES", reinterpret_cast<void*>(&guest_glGetFloati_vOES)}, \
     {"glGetFloatv", reinterpret_cast<void*>(&guest_glGetFloatv)}, \
@@ -1458,6 +1672,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetFragDataLocation", reinterpret_cast<void*>(&guest_glGetFragDataLocation)}, \
     {"glGetFragmentShadingRatesEXT", reinterpret_cast<void*>(&guest_glGetFragmentShadingRatesEXT)}, \
     {"glGetFramebufferAttachmentParameteriv", reinterpret_cast<void*>(&guest_glGetFramebufferAttachmentParameteriv)}, \
+    {"glGetFramebufferAttachmentParameterivOES", reinterpret_cast<void*>(&guest_glGetFramebufferAttachmentParameterivOES)}, \
     {"glGetFramebufferParameteriv", reinterpret_cast<void*>(&guest_glGetFramebufferParameteriv)}, \
     {"glGetFramebufferParameterivMESA", reinterpret_cast<void*>(&guest_glGetFramebufferParameterivMESA)}, \
     {"glGetFramebufferPixelLocalStorageSizeEXT", reinterpret_cast<void*>(&guest_glGetFramebufferPixelLocalStorageSizeEXT)}, \
@@ -1476,8 +1691,10 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetInternalformativ", reinterpret_cast<void*>(&guest_glGetInternalformativ)}, \
     {"glGetLightfv", reinterpret_cast<void*>(&guest_glGetLightfv)}, \
     {"glGetLightxv", reinterpret_cast<void*>(&guest_glGetLightxv)}, \
+    {"glGetLightxvOES", reinterpret_cast<void*>(&guest_glGetLightxvOES)}, \
     {"glGetMaterialfv", reinterpret_cast<void*>(&guest_glGetMaterialfv)}, \
     {"glGetMaterialxv", reinterpret_cast<void*>(&guest_glGetMaterialxv)}, \
+    {"glGetMaterialxvOES", reinterpret_cast<void*>(&guest_glGetMaterialxvOES)}, \
     {"glGetMemoryObjectDetachedResourcesuivNV", reinterpret_cast<void*>(&guest_glGetMemoryObjectDetachedResourcesuivNV)}, \
     {"glGetMemoryObjectParameterivEXT", reinterpret_cast<void*>(&guest_glGetMemoryObjectParameterivEXT)}, \
     {"glGetMultisamplefv", reinterpret_cast<void*>(&guest_glGetMultisamplefv)}, \
@@ -1531,6 +1748,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetQueryiv", reinterpret_cast<void*>(&guest_glGetQueryiv)}, \
     {"glGetQueryivEXT", reinterpret_cast<void*>(&guest_glGetQueryivEXT)}, \
     {"glGetRenderbufferParameteriv", reinterpret_cast<void*>(&guest_glGetRenderbufferParameteriv)}, \
+    {"glGetRenderbufferParameterivOES", reinterpret_cast<void*>(&guest_glGetRenderbufferParameterivOES)}, \
     {"glGetSamplerParameterIiv", reinterpret_cast<void*>(&guest_glGetSamplerParameterIiv)}, \
     {"glGetSamplerParameterIivEXT", reinterpret_cast<void*>(&guest_glGetSamplerParameterIivEXT)}, \
     {"glGetSamplerParameterIivOES", reinterpret_cast<void*>(&guest_glGetSamplerParameterIivOES)}, \
@@ -1554,6 +1772,10 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetTexEnvfv", reinterpret_cast<void*>(&guest_glGetTexEnvfv)}, \
     {"glGetTexEnviv", reinterpret_cast<void*>(&guest_glGetTexEnviv)}, \
     {"glGetTexEnvxv", reinterpret_cast<void*>(&guest_glGetTexEnvxv)}, \
+    {"glGetTexEnvxvOES", reinterpret_cast<void*>(&guest_glGetTexEnvxvOES)}, \
+    {"glGetTexGenfvOES", reinterpret_cast<void*>(&guest_glGetTexGenfvOES)}, \
+    {"glGetTexGenivOES", reinterpret_cast<void*>(&guest_glGetTexGenivOES)}, \
+    {"glGetTexGenxvOES", reinterpret_cast<void*>(&guest_glGetTexGenxvOES)}, \
     {"glGetTexLevelParameterfv", reinterpret_cast<void*>(&guest_glGetTexLevelParameterfv)}, \
     {"glGetTexLevelParameteriv", reinterpret_cast<void*>(&guest_glGetTexLevelParameteriv)}, \
     {"glGetTexParameterIiv", reinterpret_cast<void*>(&guest_glGetTexParameterIiv)}, \
@@ -1565,6 +1787,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glGetTexParameterfv", reinterpret_cast<void*>(&guest_glGetTexParameterfv)}, \
     {"glGetTexParameteriv", reinterpret_cast<void*>(&guest_glGetTexParameteriv)}, \
     {"glGetTexParameterxv", reinterpret_cast<void*>(&guest_glGetTexParameterxv)}, \
+    {"glGetTexParameterxvOES", reinterpret_cast<void*>(&guest_glGetTexParameterxvOES)}, \
     {"glGetTextureHandleIMG", reinterpret_cast<void*>(&guest_glGetTextureHandleIMG)}, \
     {"glGetTextureHandleNV", reinterpret_cast<void*>(&guest_glGetTextureHandleNV)}, \
     {"glGetTextureSamplerHandleIMG", reinterpret_cast<void*>(&guest_glGetTextureSamplerHandleIMG)}, \
@@ -1613,6 +1836,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glIsEnablediOES", reinterpret_cast<void*>(&guest_glIsEnablediOES)}, \
     {"glIsFenceNV", reinterpret_cast<void*>(&guest_glIsFenceNV)}, \
     {"glIsFramebuffer", reinterpret_cast<void*>(&guest_glIsFramebuffer)}, \
+    {"glIsFramebufferOES", reinterpret_cast<void*>(&guest_glIsFramebufferOES)}, \
     {"glIsImageHandleResidentNV", reinterpret_cast<void*>(&guest_glIsImageHandleResidentNV)}, \
     {"glIsMemoryObjectEXT", reinterpret_cast<void*>(&guest_glIsMemoryObjectEXT)}, \
     {"glIsPathNV", reinterpret_cast<void*>(&guest_glIsPathNV)}, \
@@ -1624,6 +1848,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glIsQuery", reinterpret_cast<void*>(&guest_glIsQuery)}, \
     {"glIsQueryEXT", reinterpret_cast<void*>(&guest_glIsQueryEXT)}, \
     {"glIsRenderbuffer", reinterpret_cast<void*>(&guest_glIsRenderbuffer)}, \
+    {"glIsRenderbufferOES", reinterpret_cast<void*>(&guest_glIsRenderbufferOES)}, \
     {"glIsSampler", reinterpret_cast<void*>(&guest_glIsSampler)}, \
     {"glIsSemaphoreEXT", reinterpret_cast<void*>(&guest_glIsSemaphoreEXT)}, \
     {"glIsShader", reinterpret_cast<void*>(&guest_glIsShader)}, \
@@ -1638,17 +1863,24 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glLightModelf", reinterpret_cast<void*>(&guest_glLightModelf)}, \
     {"glLightModelfv", reinterpret_cast<void*>(&guest_glLightModelfv)}, \
     {"glLightModelx", reinterpret_cast<void*>(&guest_glLightModelx)}, \
+    {"glLightModelxOES", reinterpret_cast<void*>(&guest_glLightModelxOES)}, \
     {"glLightModelxv", reinterpret_cast<void*>(&guest_glLightModelxv)}, \
+    {"glLightModelxvOES", reinterpret_cast<void*>(&guest_glLightModelxvOES)}, \
     {"glLightf", reinterpret_cast<void*>(&guest_glLightf)}, \
     {"glLightfv", reinterpret_cast<void*>(&guest_glLightfv)}, \
     {"glLightx", reinterpret_cast<void*>(&guest_glLightx)}, \
+    {"glLightxOES", reinterpret_cast<void*>(&guest_glLightxOES)}, \
     {"glLightxv", reinterpret_cast<void*>(&guest_glLightxv)}, \
+    {"glLightxvOES", reinterpret_cast<void*>(&guest_glLightxvOES)}, \
     {"glLineWidth", reinterpret_cast<void*>(&guest_glLineWidth)}, \
     {"glLineWidthx", reinterpret_cast<void*>(&guest_glLineWidthx)}, \
+    {"glLineWidthxOES", reinterpret_cast<void*>(&guest_glLineWidthxOES)}, \
     {"glLinkProgram", reinterpret_cast<void*>(&guest_glLinkProgram)}, \
     {"glLoadIdentity", reinterpret_cast<void*>(&guest_glLoadIdentity)}, \
     {"glLoadMatrixf", reinterpret_cast<void*>(&guest_glLoadMatrixf)}, \
     {"glLoadMatrixx", reinterpret_cast<void*>(&guest_glLoadMatrixx)}, \
+    {"glLoadMatrixxOES", reinterpret_cast<void*>(&guest_glLoadMatrixxOES)}, \
+    {"glLoadPaletteFromModelViewMatrixOES", reinterpret_cast<void*>(&guest_glLoadPaletteFromModelViewMatrixOES)}, \
     {"glLogicOp", reinterpret_cast<void*>(&guest_glLogicOp)}, \
     {"glMakeImageHandleNonResidentNV", reinterpret_cast<void*>(&guest_glMakeImageHandleNonResidentNV)}, \
     {"glMakeImageHandleResidentNV", reinterpret_cast<void*>(&guest_glMakeImageHandleResidentNV)}, \
@@ -1660,8 +1892,11 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glMaterialf", reinterpret_cast<void*>(&guest_glMaterialf)}, \
     {"glMaterialfv", reinterpret_cast<void*>(&guest_glMaterialfv)}, \
     {"glMaterialx", reinterpret_cast<void*>(&guest_glMaterialx)}, \
+    {"glMaterialxOES", reinterpret_cast<void*>(&guest_glMaterialxOES)}, \
     {"glMaterialxv", reinterpret_cast<void*>(&guest_glMaterialxv)}, \
+    {"glMaterialxvOES", reinterpret_cast<void*>(&guest_glMaterialxvOES)}, \
     {"glMatrixFrustumEXT", reinterpret_cast<void*>(&guest_glMatrixFrustumEXT)}, \
+    {"glMatrixIndexPointerOES", reinterpret_cast<void*>(&guest_glMatrixIndexPointerOES)}, \
     {"glMatrixLoad3x2fNV", reinterpret_cast<void*>(&guest_glMatrixLoad3x2fNV)}, \
     {"glMatrixLoad3x3fNV", reinterpret_cast<void*>(&guest_glMatrixLoad3x3fNV)}, \
     {"glMatrixLoadIdentityEXT", reinterpret_cast<void*>(&guest_glMatrixLoadIdentityEXT)}, \
@@ -1696,6 +1931,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glMinSampleShadingOES", reinterpret_cast<void*>(&guest_glMinSampleShadingOES)}, \
     {"glMultMatrixf", reinterpret_cast<void*>(&guest_glMultMatrixf)}, \
     {"glMultMatrixx", reinterpret_cast<void*>(&guest_glMultMatrixx)}, \
+    {"glMultMatrixxOES", reinterpret_cast<void*>(&guest_glMultMatrixxOES)}, \
     {"glMultiDrawArraysEXT", reinterpret_cast<void*>(&guest_glMultiDrawArraysEXT)}, \
     {"glMultiDrawArraysIndirectEXT", reinterpret_cast<void*>(&guest_glMultiDrawArraysIndirectEXT)}, \
     {"glMultiDrawElementsBaseVertexEXT", reinterpret_cast<void*>(&guest_glMultiDrawElementsBaseVertexEXT)}, \
@@ -1707,6 +1943,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glMultiDrawMeshTasksIndirectNV", reinterpret_cast<void*>(&guest_glMultiDrawMeshTasksIndirectNV)}, \
     {"glMultiTexCoord4f", reinterpret_cast<void*>(&guest_glMultiTexCoord4f)}, \
     {"glMultiTexCoord4x", reinterpret_cast<void*>(&guest_glMultiTexCoord4x)}, \
+    {"glMultiTexCoord4xOES", reinterpret_cast<void*>(&guest_glMultiTexCoord4xOES)}, \
     {"glNamedBufferAttachMemoryNV", reinterpret_cast<void*>(&guest_glNamedBufferAttachMemoryNV)}, \
     {"glNamedBufferPageCommitmentMemNV", reinterpret_cast<void*>(&guest_glNamedBufferPageCommitmentMemNV)}, \
     {"glNamedBufferStorageExternalEXT", reinterpret_cast<void*>(&guest_glNamedBufferStorageExternalEXT)}, \
@@ -1716,13 +1953,16 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glNamedRenderbufferStorageMultisampleAdvancedAMD", reinterpret_cast<void*>(&guest_glNamedRenderbufferStorageMultisampleAdvancedAMD)}, \
     {"glNormal3f", reinterpret_cast<void*>(&guest_glNormal3f)}, \
     {"glNormal3x", reinterpret_cast<void*>(&guest_glNormal3x)}, \
+    {"glNormal3xOES", reinterpret_cast<void*>(&guest_glNormal3xOES)}, \
     {"glNormalPointer", reinterpret_cast<void*>(&guest_glNormalPointer)}, \
     {"glObjectLabel", reinterpret_cast<void*>(&guest_glObjectLabel)}, \
     {"glObjectLabelKHR", reinterpret_cast<void*>(&guest_glObjectLabelKHR)}, \
     {"glObjectPtrLabel", reinterpret_cast<void*>(&guest_glObjectPtrLabel)}, \
     {"glObjectPtrLabelKHR", reinterpret_cast<void*>(&guest_glObjectPtrLabelKHR)}, \
     {"glOrthof", reinterpret_cast<void*>(&guest_glOrthof)}, \
+    {"glOrthofOES", reinterpret_cast<void*>(&guest_glOrthofOES)}, \
     {"glOrthox", reinterpret_cast<void*>(&guest_glOrthox)}, \
+    {"glOrthoxOES", reinterpret_cast<void*>(&guest_glOrthoxOES)}, \
     {"glPatchParameteri", reinterpret_cast<void*>(&guest_glPatchParameteri)}, \
     {"glPatchParameteriEXT", reinterpret_cast<void*>(&guest_glPatchParameteriEXT)}, \
     {"glPatchParameteriOES", reinterpret_cast<void*>(&guest_glPatchParameteriOES)}, \
@@ -1750,14 +1990,18 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glPointParameterf", reinterpret_cast<void*>(&guest_glPointParameterf)}, \
     {"glPointParameterfv", reinterpret_cast<void*>(&guest_glPointParameterfv)}, \
     {"glPointParameterx", reinterpret_cast<void*>(&guest_glPointParameterx)}, \
+    {"glPointParameterxOES", reinterpret_cast<void*>(&guest_glPointParameterxOES)}, \
     {"glPointParameterxv", reinterpret_cast<void*>(&guest_glPointParameterxv)}, \
+    {"glPointParameterxvOES", reinterpret_cast<void*>(&guest_glPointParameterxvOES)}, \
     {"glPointSize", reinterpret_cast<void*>(&guest_glPointSize)}, \
     {"glPointSizePointerOES", reinterpret_cast<void*>(&guest_glPointSizePointerOES)}, \
     {"glPointSizex", reinterpret_cast<void*>(&guest_glPointSizex)}, \
+    {"glPointSizexOES", reinterpret_cast<void*>(&guest_glPointSizexOES)}, \
     {"glPolygonModeNV", reinterpret_cast<void*>(&guest_glPolygonModeNV)}, \
     {"glPolygonOffset", reinterpret_cast<void*>(&guest_glPolygonOffset)}, \
     {"glPolygonOffsetClampEXT", reinterpret_cast<void*>(&guest_glPolygonOffsetClampEXT)}, \
     {"glPolygonOffsetx", reinterpret_cast<void*>(&guest_glPolygonOffsetx)}, \
+    {"glPolygonOffsetxOES", reinterpret_cast<void*>(&guest_glPolygonOffsetxOES)}, \
     {"glPopDebugGroup", reinterpret_cast<void*>(&guest_glPopDebugGroup)}, \
     {"glPopDebugGroupKHR", reinterpret_cast<void*>(&guest_glPopDebugGroupKHR)}, \
     {"glPopGroupMarkerEXT", reinterpret_cast<void*>(&guest_glPopGroupMarkerEXT)}, \
@@ -1861,6 +2105,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glPushGroupMarkerEXT", reinterpret_cast<void*>(&guest_glPushGroupMarkerEXT)}, \
     {"glPushMatrix", reinterpret_cast<void*>(&guest_glPushMatrix)}, \
     {"glQueryCounterEXT", reinterpret_cast<void*>(&guest_glQueryCounterEXT)}, \
+    {"glQueryMatrixxOES", reinterpret_cast<void*>(&guest_glQueryMatrixxOES)}, \
     {"glRasterSamplesEXT", reinterpret_cast<void*>(&guest_glRasterSamplesEXT)}, \
     {"glReadBuffer", reinterpret_cast<void*>(&guest_glReadBuffer)}, \
     {"glReadBufferIndexedEXT", reinterpret_cast<void*>(&guest_glReadBufferIndexedEXT)}, \
@@ -1879,14 +2124,17 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glRenderbufferStorageMultisampleEXT", reinterpret_cast<void*>(&guest_glRenderbufferStorageMultisampleEXT)}, \
     {"glRenderbufferStorageMultisampleIMG", reinterpret_cast<void*>(&guest_glRenderbufferStorageMultisampleIMG)}, \
     {"glRenderbufferStorageMultisampleNV", reinterpret_cast<void*>(&guest_glRenderbufferStorageMultisampleNV)}, \
+    {"glRenderbufferStorageOES", reinterpret_cast<void*>(&guest_glRenderbufferStorageOES)}, \
     {"glResetMemoryObjectParameterNV", reinterpret_cast<void*>(&guest_glResetMemoryObjectParameterNV)}, \
     {"glResolveDepthValuesNV", reinterpret_cast<void*>(&guest_glResolveDepthValuesNV)}, \
     {"glResolveMultisampleFramebufferAPPLE", reinterpret_cast<void*>(&guest_glResolveMultisampleFramebufferAPPLE)}, \
     {"glResumeTransformFeedback", reinterpret_cast<void*>(&guest_glResumeTransformFeedback)}, \
     {"glRotatef", reinterpret_cast<void*>(&guest_glRotatef)}, \
     {"glRotatex", reinterpret_cast<void*>(&guest_glRotatex)}, \
+    {"glRotatexOES", reinterpret_cast<void*>(&guest_glRotatexOES)}, \
     {"glSampleCoverage", reinterpret_cast<void*>(&guest_glSampleCoverage)}, \
     {"glSampleCoveragex", reinterpret_cast<void*>(&guest_glSampleCoveragex)}, \
+    {"glSampleCoveragexOES", reinterpret_cast<void*>(&guest_glSampleCoveragexOES)}, \
     {"glSampleMaski", reinterpret_cast<void*>(&guest_glSampleMaski)}, \
     {"glSamplerParameterIiv", reinterpret_cast<void*>(&guest_glSamplerParameterIiv)}, \
     {"glSamplerParameterIivEXT", reinterpret_cast<void*>(&guest_glSamplerParameterIivEXT)}, \
@@ -1900,6 +2148,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glSamplerParameteriv", reinterpret_cast<void*>(&guest_glSamplerParameteriv)}, \
     {"glScalef", reinterpret_cast<void*>(&guest_glScalef)}, \
     {"glScalex", reinterpret_cast<void*>(&guest_glScalex)}, \
+    {"glScalexOES", reinterpret_cast<void*>(&guest_glScalexOES)}, \
     {"glScissor", reinterpret_cast<void*>(&guest_glScissor)}, \
     {"glScissorArrayvNV", reinterpret_cast<void*>(&guest_glScissorArrayvNV)}, \
     {"glScissorArrayvOES", reinterpret_cast<void*>(&guest_glScissorArrayvOES)}, \
@@ -1956,9 +2205,17 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glTexEnvi", reinterpret_cast<void*>(&guest_glTexEnvi)}, \
     {"glTexEnviv", reinterpret_cast<void*>(&guest_glTexEnviv)}, \
     {"glTexEnvx", reinterpret_cast<void*>(&guest_glTexEnvx)}, \
+    {"glTexEnvxOES", reinterpret_cast<void*>(&guest_glTexEnvxOES)}, \
     {"glTexEnvxv", reinterpret_cast<void*>(&guest_glTexEnvxv)}, \
+    {"glTexEnvxvOES", reinterpret_cast<void*>(&guest_glTexEnvxvOES)}, \
     {"glTexEstimateMotionQCOM", reinterpret_cast<void*>(&guest_glTexEstimateMotionQCOM)}, \
     {"glTexEstimateMotionRegionsQCOM", reinterpret_cast<void*>(&guest_glTexEstimateMotionRegionsQCOM)}, \
+    {"glTexGenfOES", reinterpret_cast<void*>(&guest_glTexGenfOES)}, \
+    {"glTexGenfvOES", reinterpret_cast<void*>(&guest_glTexGenfvOES)}, \
+    {"glTexGeniOES", reinterpret_cast<void*>(&guest_glTexGeniOES)}, \
+    {"glTexGenivOES", reinterpret_cast<void*>(&guest_glTexGenivOES)}, \
+    {"glTexGenxOES", reinterpret_cast<void*>(&guest_glTexGenxOES)}, \
+    {"glTexGenxvOES", reinterpret_cast<void*>(&guest_glTexGenxvOES)}, \
     {"glTexImage2D", reinterpret_cast<void*>(&guest_glTexImage2D)}, \
     {"glTexImage3D", reinterpret_cast<void*>(&guest_glTexImage3D)}, \
     {"glTexImage3DOES", reinterpret_cast<void*>(&guest_glTexImage3DOES)}, \
@@ -1975,7 +2232,9 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glTexParameteri", reinterpret_cast<void*>(&guest_glTexParameteri)}, \
     {"glTexParameteriv", reinterpret_cast<void*>(&guest_glTexParameteriv)}, \
     {"glTexParameterx", reinterpret_cast<void*>(&guest_glTexParameterx)}, \
+    {"glTexParameterxOES", reinterpret_cast<void*>(&guest_glTexParameterxOES)}, \
     {"glTexParameterxv", reinterpret_cast<void*>(&guest_glTexParameterxv)}, \
+    {"glTexParameterxvOES", reinterpret_cast<void*>(&guest_glTexParameterxvOES)}, \
     {"glTexStorage1DEXT", reinterpret_cast<void*>(&guest_glTexStorage1DEXT)}, \
     {"glTexStorage2D", reinterpret_cast<void*>(&guest_glTexStorage2D)}, \
     {"glTexStorage2DEXT", reinterpret_cast<void*>(&guest_glTexStorage2DEXT)}, \
@@ -2010,6 +2269,7 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glTransformPathNV", reinterpret_cast<void*>(&guest_glTransformPathNV)}, \
     {"glTranslatef", reinterpret_cast<void*>(&guest_glTranslatef)}, \
     {"glTranslatex", reinterpret_cast<void*>(&guest_glTranslatex)}, \
+    {"glTranslatexOES", reinterpret_cast<void*>(&guest_glTranslatexOES)}, \
     {"glUniform1f", reinterpret_cast<void*>(&guest_glUniform1f)}, \
     {"glUniform1fv", reinterpret_cast<void*>(&guest_glUniform1fv)}, \
     {"glUniform1i", reinterpret_cast<void*>(&guest_glUniform1i)}, \
@@ -2115,4 +2375,5 @@ WINAPK_GUEST_ABI void guest_glWindowRectanglesEXT(GLenum mode, GLsizei count, co
     {"glWaitSyncAPPLE", reinterpret_cast<void*>(&guest_glWaitSyncAPPLE)}, \
     {"glWaitVkSemaphoreNV", reinterpret_cast<void*>(&guest_glWaitVkSemaphoreNV)}, \
     {"glWeightPathsNV", reinterpret_cast<void*>(&guest_glWeightPathsNV)}, \
+    {"glWeightPointerOES", reinterpret_cast<void*>(&guest_glWeightPointerOES)}, \
     {"glWindowRectanglesEXT", reinterpret_cast<void*>(&guest_glWindowRectanglesEXT)}, \

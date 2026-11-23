@@ -261,3 +261,82 @@ EXPORT int sig_thread(void) {
     uninstall(SIGUSR1);
     return g_hit && g_handler_tid == g_worker_tid && g_handler_tid != gettid() ? 1 : -2;
 }
+
+// A thread asleep in sem_wait takes the signal too: a collector's suspend signal goes to threads parked on locks.
+int sem_init(void*, int, unsigned);
+int sem_wait(void*);
+int sem_post(void*);
+int usleep(unsigned);
+static long g_sem[2];
+static volatile int g_sleeping, g_slept_hit;
+static void on_usr1_sleeper(int sig) {
+    (void)sig;
+    g_slept_hit = 1;
+}
+static void* sleeper(void* arg) {
+    (void)arg;
+    g_sleeping = 1;
+    sem_wait(g_sem);
+    return 0;
+}
+EXPORT int sig_blocked_thread(void) {
+    g_sleeping = g_slept_hit = 0;
+    install(SIGUSR1, on_usr1_sleeper, 0);
+    sem_init(g_sem, 0, 0);
+    pthread_t t;
+    if (pthread_create(&t, 0, sleeper, 0) != 0) return -1;
+    for (int i = 0; i < 20000000 && !g_sleeping; ++i) sched_yield();
+    usleep(300000);  // the sleeper has blocked in sem_wait by now
+    for (int i = 0; i < 1000 && !g_slept_hit; ++i) {
+        pthread_kill(t, SIGUSR1);
+        for (int j = 0; j < 100000 && !g_slept_hit; ++j) sched_yield();
+    }
+    const int hit = g_slept_hit;
+    sem_post(g_sem);
+    pthread_join(t, 0);
+    uninstall(SIGUSR1);
+    return hit ? 1 : -2;
+}
+
+// A handler that itself waits must leave the interrupted wait findable: a second signal still wakes it.
+static long g_nest_sem[2], g_inner_sem[2];
+static volatile int g_nest_sleeping, g_nest_hits, g_in_handler;
+static void on_usr1_nested(int sig) {
+    (void)sig;
+    g_in_handler = 1;
+    sem_wait(g_inner_sem);
+    ++g_nest_hits;
+    g_in_handler = 0;
+}
+static void* nest_sleeper(void* arg) {
+    (void)arg;
+    g_nest_sleeping = 1;
+    sem_wait(g_nest_sem);
+    return 0;
+}
+EXPORT int sig_nested_wait(void) {
+    g_nest_sleeping = g_nest_hits = g_in_handler = 0;
+    install(SIGUSR1, on_usr1_nested, 0);
+    sem_init(g_nest_sem, 0, 0);
+    sem_init(g_inner_sem, 0, 0);
+    pthread_t t;
+    if (pthread_create(&t, 0, nest_sleeper, 0) != 0) return -1;
+    for (int i = 0; i < 20000000 && !g_nest_sleeping; ++i) sched_yield();
+    usleep(300000);
+    for (int round = 1; round <= 2; ++round) {
+        for (int i = 0; i < 1000 && g_nest_hits < round; ++i) {
+            pthread_kill(t, SIGUSR1);
+            for (int j = 0; j < 20000 && !g_in_handler && g_nest_hits < round; ++j) sched_yield();
+            if (g_in_handler) {
+                usleep(50000);  // the handler is parked in its own wait
+                sem_post(g_inner_sem);
+                for (int j = 0; j < 20000 && g_nest_hits < round; ++j) sched_yield();
+            }
+        }
+    }
+    const int hits = g_nest_hits;
+    sem_post(g_nest_sem);
+    pthread_join(t, 0);
+    uninstall(SIGUSR1);
+    return hits >= 2 ? 1 : -2;
+}

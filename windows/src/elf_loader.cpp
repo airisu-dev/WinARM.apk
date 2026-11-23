@@ -12,6 +12,7 @@
 #include "winapk/guest_abi.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -759,6 +760,8 @@ namespace {
 
 // The two per-thread slots of the virtual x18: TLS slots, which live in the TEB's inline array. Taken once per
 // process and kept, since every rewritten library shares one x18 value.
+std::atomic<uint32_t> g_x18_value_offset{0}, g_x18_scratch_offset{0};
+
 bool x18_slots(arm64::X18Slots* out, std::string* error) {
     static std::once_flag once;
     static arm64::X18Slots slots;
@@ -776,6 +779,8 @@ bool x18_slots(arm64::X18Slots* out, std::string* error) {
             if (seen == kProbe) {
                 slots.value = kTebTlsSlots + 8 * v;
                 slots.scratch = kTebTlsSlots + 8 * s;
+                g_x18_value_offset = slots.value;
+                g_x18_scratch_offset = slots.scratch;
                 return;
             }
         }
@@ -793,6 +798,12 @@ bool x18_slots(arm64::X18Slots* out, std::string* error) {
 
 }  // namespace
 
+bool x18_slot_offsets(uint32_t* value, uint32_t* scratch) {
+    *value = g_x18_value_offset;
+    *scratch = g_x18_scratch_offset;
+    return *value != 0;
+}
+
 // Rewrites every instruction that names x18 into a branch to a thunk (arm64_x18_rewrite.h). The whole change is
 // planned and checked first; nothing is written to the image unless every word can be done.
 bool ElfImage::rewrite_x18(const std::vector<uint8_t>& file, const std::string& why, std::string* error) {
@@ -807,6 +818,13 @@ bool ElfImage::rewrite_x18(const std::vector<uint8_t>& file, const std::string& 
         return false;
     }
     const arm64::X18Plan plan = arm64::plan_x18_sites(file.data(), file.size());
+    if (arm64::x18_data_only(plan)) {
+        std::fprintf(stderr,
+                     "[win.apk] %s: %s; %zu word(s) outside the unwind tables look like x18 instructions and are "
+                     "taken as data, nothing to rewrite\n",
+                     path_.u8string().c_str(), why.c_str(), plan.outside_functions);
+        return true;
+    }
     if (!plan.ok || plan.sites.empty()) {
         *error = head + "no instruction that names x18 lies in the .eh_frame function ranges";
         return false;

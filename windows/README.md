@@ -34,7 +34,7 @@ upstream so its releases can be merged.
 | `host/` | `winapk-runtime.exe` (`runtime_main.cpp`), the app window (`win32_window.cpp`), the host natives (`native_*.cpp`, one file per Java class; `host_natives.cpp` binds them), the GL layer (`gl/`), app library loading (`guest_libs.cpp`, `guest_stub.cpp`, `translator_main.cpp`), shared storage (`user_folders.cpp`), java.io opens with `FILE_SHARE_DELETE` (`java_io_open.cpp`), class-data sharing (`cds.cpp`, `cds_util.cpp`) |
 | `launcher/` | `Win.apk.exe`: the app library, the install helper and the permission dialogs (`launcher_main.cpp`), and its state machines, each a header a unit test drives (`app_runs.h`, `installs.h`, `install_names.h`, `install_versions.h`, `shortcut_rules.h`, `clear_library.h`, `updates.h`, `page_sync.h`, `prompt_ids.h`, `theme_choice.h`) |
 | `java/` | Windows-only Java: `com.winapk.tools` (`winapk-tools.jar`), `java_base_patch/` (an overlay for `java.base`), `winapk-framework.classlist` (the framework archive's classes, `host/cds.h`) |
-| `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which arm64 libraries use x18 as scratch), `apicov/` (the API coverage report, Java), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py`, `gen_icon.py` |
+| `tools/` | `winapk-jvm-run` (the real-JVM test), `winapk-x18scan` (which arm64 libraries use x18 as scratch), `apicov/` (the API coverage report, Java), and the generators `gen_jni_slots.py`, `gen_gl_stubs.py` (the GLES 1.1 OES, GLES 2-3.2 and EGL entry points an app can link, `libGLESv1_CM` ones included), `gen_icon.py` |
 | `scripts/` | `build_java.sh`, `build_framework_res.sh`, `fetch_angle.sh`, `fetch_webview2.sh`, `fetch_android_api.sh`, `api_coverage.sh`, `stage_runtime.sh`, `bake_jre.sh`, `merge_classlists.py`, `arch.sh` |
 | `test/` | The unit tests (`*_test.cpp`), the guest test libraries (`guest/`, plain clang + lld, no NDK), the Java tests (`java/`), the compatibility sweep (`compat/`), the API coverage tool's fixture (`apicov/`) |
 | `package/` | The installer (`winapk.iss`, Inno Setup), `README.txt`, `RELEASE_NOTES.md` and `THIRD_PARTY_NOTICES.txt` shipped with a release |
@@ -146,7 +146,7 @@ gets paths in any language whole.
 | `WINAPK_PHONE_SIZE=WxH`, `WINAPK_RESIZABLE=0`, `WINAPK_DENSITY=<dpi>` | The phone size in dp, letterboxing instead of resizing, the density the app sees |
 | `WINAPK_ABIS` | Overrides the ABI list an install picks (tests) |
 | `WINAPK_ARM64_ALLOW_X18=1` | Loads a library that uses x18 as scratch unchanged (`include/winapk/arm64_x18.h`), to see what it does. The first exception or Windows call made while its value is in x18 ends the process |
-| `WINAPK_ARM64_X18_REWRITE=0` | Refuses a library that uses x18 as scratch instead of rewriting it. By default it is rewritten at load (`include/winapk/arm64_x18_rewrite.h`): every instruction that names x18 becomes `b thunk`, and the thunk runs the instruction on another register loaded from and stored to a per-thread slot in the TEB (two `TlsAlloc` slots), so the real x18 stays the TEB. `blr x18` becomes `bl thunk`; `br x18` and `ret x18` jump from a register that nothing can still read where the branch may land (chosen from the code of the function and the functions joined to it by direct branches; the link register only for a table dispatch); `adr` and `adrp` into x18 are rebuilt from the thunk's own address. All or nothing: a library is refused, with the reason, if one instruction cannot be rewritten (exclusives, literal loads into x18, authenticated branches), if no register is free to hold the target of a `br x18`, if one that names x18 may be data (a literal pool word, or a word nothing enters) rather than code, if it uses x18 as a shadow call stack (a push would run with a virtual x18 of 0), if none of its x18 instructions lie in `.eh_frame` function ranges, or if it is loaded into a range the caller reserved. Libraries that only read x18 are left alone. `WINAPK_ARM64_ALLOW_X18=1` wins when both are set |
+| `WINAPK_ARM64_X18_REWRITE=0` | Refuses a library that uses x18 as scratch instead of rewriting it. By default it is rewritten at load (`include/winapk/arm64_x18_rewrite.h`): every instruction that names x18 becomes `b thunk`, and the thunk runs the instruction on another register loaded from and stored to a per-thread slot in the TEB (two `TlsAlloc` slots), so the real x18 stays the TEB. `blr x18` becomes `bl thunk`; `br x18` and `ret x18` jump from a register that nothing can still read where the branch may land (chosen from the code of the function and the functions joined to it by direct branches; the link register only for a table dispatch); `adr` and `adrp` into x18 are rebuilt from the thunk's own address. All or nothing: a library is refused, with the reason, if one instruction cannot be rewritten (exclusives, literal loads into x18, authenticated branches), if no register is free to hold the target of a `br x18`, if one that names x18 may be data (a literal pool word, or a word nothing enters) rather than code, unless the words between the `.eh_frame` ranges that look like code are read as functions of their own, each block ending in a branch or return (Unity's `libunity.so`), if it uses x18 as a shadow call stack (a push would run with a virtual x18 of 0), if none of its x18 instructions lie in `.eh_frame` function ranges and those ranges cover under 80% of its code (when they cover more, and no code between the ranges that a call reaches writes x18, what names x18 is taken as a table kept in `.text`, such as OpenSSL's P-256 table, and the library is loaded unchanged with a log line), or if it is loaded into a range the caller reserved. Libraries that only read x18 are left alone. `WINAPK_ARM64_ALLOW_X18=1` wins when both are set |
 | `WINAPK_FRAME_TIMING=1` | Every 5 s, a `[frame-timing]` line with a GL view's fps and each step's mean (`compose` is the GPU copy and present when frames go to the window on the GPU) |
 | `WINAPK_GL_PRESENT=readback`, `on` or `gpu` | GL frames, the view tree and SurfaceView frames go to the window as DirectComposition layers with no readback (`host/gl/gl_present.h`), on by default on a Direct3D 11 GPU (Settings > Apps > "Enable GPU rendering", `GpuPresent`; an app's own choice is `library\<name>.gpu`). `readback` turns it off, `on` turns it on, `gpu` forces it on with WARP too. Not with `WINAPK_HEADLESS_FRAME` |
 | `WINAPK_TEST_WORKAREA=<w>x<h>[+<x>+<y>]` | Stands in for the monitor's work area, in pixels; `@file` reads it from a file at every fit |
@@ -187,7 +187,7 @@ Every test is a program built by CMake; `win-ci.yml` runs each on
 | `winapk-x18-rewrite-test` | The virtual x18: each form's operands (encodings from llvm-mc), random words against the scan, the generated thunks run on this PC (registers, flags and memory as before, the virtual x18 as expected, `br`, `blr` and `ret` through x18 and `adr` and `adrp` into it, 16 threads with one each), and the code-or-data planner and the choice of the borrowed register on small ELF files. Needs Windows on Arm |
 | `winapk-x18-scan-test` | The x18 scan one instruction at a time (encodings from llvm-mc): reads, writes, the `ldp x18, x19` of a context restore that does not count, a range scan |
 | `winapk-arm64-test <guest/arm64>` | `arm64_isa.c` built into the test and three times as guest libraries must agree on every function; `arm64_bridge_guest.c` (calls both ways, variadics, threads, atexit, arm64's `struct stat`); `arm64_flow_guest.c` (returns into ancestor frames, coroutines, RETAA, deep recursion, saturating conversions, exclusives, STLR/LDAR); ELF TLS through TLSDESC; C++ exceptions (`arm64_eh_guest.cpp`, built when `ANDROID_NDK_HOME` names an NDK); `dlclose`; `svc #0`; signals delivered to guest handlers |
-| `winapk-linker-test <guest/aarch64/link>` | A four-library tree with a `DT_NEEDED` cycle and a plugin: constructor order, symbol resolution order, `dlsym` scopes, the guest's `dlopen`, `dlsym`, `dlerror` and `dladdr`, a library opened by its Android path; corrupt ELF headers and tables refused |
+| `winapk-linker-test <guest/aarch64/link>` | A four-library tree with a `DT_NEEDED` cycle and a plugin: constructor order, symbol resolution order, `dlsym` scopes, the guest's `dlopen`, `dlsym`, `dlerror` and `dladdr`, a library opened by its Android path and by a path past MAX_PATH; corrupt ELF headers and tables refused |
 | `winapk-bionic-test <bionic_guest.so> <scratch>` | `test/guest/bionic_guest.c` exercises the shim from guest code: strings, printf/scanf through the guest's `va_list`, threads, files, ELF TLS, properties, locales, futex, large reservations, pipes, eventfd, epoll, sockets (loopback, multicast), `ALooper`, clocks, `mmap`, and calls that must fail as Linux reports it |
 | `winapk-crash-test <scratch>` | `host/crash_report.cpp`: a guest SIGSEGV handler that declines, then the report line and a minidump, pruned to the last three |
 | `winapk-applink-test` | `host/applink_match.h`: which navigation is the App Link sign-in's return to the app |
@@ -768,7 +768,10 @@ under `runtime/`):
   owner) reports the view's size and gets `surfaceChanged` for it, as AOSP
   always does. Apps that start their camera preview only after that
   `surfaceChanged` waited forever. `MACAPK_SV_OVERSIZE_HOLDER=0` turns it off.
-  Not Windows-specific.
+  A tick of a SurfaceView with no renderer yet also withholds the host's frame
+  (`NativeCocoa.beginWithheldTick`), so the view's empty pbuffer is not shown:
+  a native engine (Unity) that renders into the window itself and is quiet for
+  half a second had its last frame replaced by black. Not Windows-specific.
 - `runtime/java/android/webkit/MacApkWebViewBridge.java` and `WebView.java`:
   `macapkWantsIntercept` / `macapkInterceptRequest`, through which an engine
   that can hold a request open (`windows/host/native_webview.cpp`, WebView2's
@@ -921,6 +924,20 @@ under `runtime/`):
   `mClassLoader` field of AOSP `ContextImpl`, and `getClassLoader` returns it
   when set; Chromium sets it reflectively for isolated splits
   (`MACAPK_CONTEXT_MCLASSLOADER=0` ignores it). Not Windows-specific.
+- `runtime/java/android/app/Application.java` (`macapkCodePath`): `getPackageCodePath()`
+  and `getPackageResourcePath()` answer the Android spelling of the installed APK
+  (`/data/app/~~<h>/<pkg>-<h>/base.apk`, which the shim and `WinApkPaths` map back)
+  when it lies under the android root. Unity's native player reads
+  `<code path>/assets/...` (`unity_app_guid`, il2cpp's `global-metadata.dat`) from
+  its own index of the APK only for a path that starts with `/`; given
+  `C:\...\base.apk` it opened the entry as a plain file and the app crashed in
+  il2cpp. `ApplicationInfo.sourceDir` stays a host path. Windows-specific.
+  The record `getApplicationInfo()` hands the app (not the runtime's own loaders)
+  names the split APKs (`splitSourceDirs`, `splitPublicSourceDirs`) by their Android
+  paths too: Unity builds a split's `<path>/assets/...` from the code path's folder
+  and indexes it only under that spelling. That record is one cached copy per
+  runtime record, with or without splits: its identity is stable and what the app
+  writes into it does not reach the runtime's own record.
 - `runtime/java/android/app/Application.java`, `Activity.java` and
   `com/macapk/loader/ActivityHost.java`: `onActivityPreCreated` goes out before
   `onCreate`, `onActivityCreated` from `Activity.onCreate` (or after it when

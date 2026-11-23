@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "../host/pointer_input.h"
+#include "../host/vsync_grid.h"
 #include "../host/win32_window.h"
 #include "../host/window_fit.h"
 
@@ -122,6 +123,16 @@ int main() {
         const AppPoint m = window_app_point(599, 20, 1000, true, 350, 0, 300, 600);
         check("a mirrored window: x is measured from the left again", m.inside && m.x == 50 && m.y == 20);
         check("mirroring twice is the position itself", window_unmirror_x(window_unmirror_x(123, 1000, true), 1000, true) == 123);
+    }
+
+    std::printf("the vsync grid\n");
+    {
+        const int64_t p = 16666666;
+        check("on time: the next slot", next_grid_tick(1000, 1000 + p / 2, p) == 1000 + p);
+        check("a slot exactly now is kept", next_grid_tick(1000, 1000 + p, p) == 1000 + p);
+        check("late by under a period: the following slot, on the grid",
+              next_grid_tick(0, 3 * p - 1, p) == 3 * p && next_grid_tick(0, 3 * p + 1, p) == 4 * p);
+        check("a long idle stretch: one slot, never in the past", next_grid_tick(0, 100 * p + 5, p) == 101 * p);
     }
 
     std::printf("touch contacts as Android pointers\n");

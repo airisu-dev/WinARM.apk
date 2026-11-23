@@ -79,6 +79,22 @@ or nothing and patches only words that are code: inside `.eh_frame` functions, n
 read as a literal, and reachable (a function with an indirect `br` takes every block
 start as reachable). A data word right after an unconditional branch in such a
 function is told from code only by its block being plausible code.
+Words naming x18 outside every `.eh_frame` function that are not text make a library
+unloadable unless the code outside the tables is read too (Unity's `libunity.so` carries
+physics and math code built without unwind info). Then each run of valid words between the
+ranges (no reserved word, no two printable-ASCII words in a row), cut where a call lands
+and at a frame-making first word after `ret`, `b` or `br`, is a function of its own, read
+as one with an indirect `br`, except that a word after its last `ret`, `b` or `br` is not code (it may
+be a constant loaded through `adrp`) unless the run goes on into a function the tables describe or into
+words that only look like a string; it is kept only if that settles every word. A function that
+is a call target is not joined to the functions that branch to it (a tail call).
+A library with no x18 instruction in its `.eh_frame` functions, whose ranges cover 80% or
+more of its code, is loaded unchanged only if no code outside them that a call reaches writes x18
+(the runs between the ranges are read as above; a word that follows the last return of such a function,
+or that only reads x18, does not count). What names x18 outside the ranges is then a table in `.text`
+(OpenSSL's `ecp_nistz256_precomputed`, SHA-256 constants), and OpenSSL's own assembly
+does not use x18. Code without unwind info that no call reaches (a virtual call, a jump table) and that
+clobbers x18 would not be caught.
 `blr x18` becomes `bl thunk` (x16 may be clobbered by a call). After a `br x18` nothing
 can restore a borrowed register, so its thunk clobbers one that is dead wherever the
 branch may land: a register of x9..x17, then x8..x0, then the link register (the last
@@ -153,6 +169,14 @@ An app assumes a POSIX filesystem. One table decides where a guest path lives
 under `%LOCALAPPDATA%\Win.apk\android`. File names with characters NTFS
 forbids are escaped.
 
+The APK is the one file an app is told by its Android name:
+`getPackageCodePath()` is `/data/app/~~<h>/<pkg>-<h>/base.apk`, while
+`ApplicationInfo.sourceDir` stays the host path the ELF and dex loaders open.
+Unity's player indexes the APK with `fopen`/`fseek`/`fread` and serves
+`<code path>/assets/...` from that index only when the path starts with `/`;
+with a drive-letter path it `stat`s the entry as a plain file, so
+`unity_app_guid` and il2cpp's `global-metadata.dat` could not be read.
+
 ## 5. Upstream behaviour the port preserves
 
 - `com.macapk.loader.AppClassLoader.findLibrary` is the single funnel for
@@ -181,7 +205,24 @@ forbids are escaped.
   as `ro.product.cpu.abi`, `uname`'s machine); arm64 apps get arm64 layouts
   through `arm64_abi.cpp`, but these values are to be checked.
 - Signals are delivered for faults and self-sent signals
-  (`src/bionic/signal.cpp`); POSIX timers are recorded only.
+  (`src/bionic/signal.cpp`); POSIX timers are recorded only. A signal to a thread
+  asleep in a futex, semaphore or mutex wait wakes it to run the handler (Boehm
+  GC's suspend signal, which Unity's il2cpp needs to start). The wake is
+  `WakeByAddressAll` on the address the thread waits on (`wait_on_address`):
+  `NtAlertThreadByThreadId` leaves the waiter's wait block linked in the
+  WaitOnAddress hash bucket, and the next wait at that stack address turned the
+  bucket into a cycle every later wait spun on. A thread inside ntdll, kernel32,
+  kernelbase, win32u or user32 (not at a `svc`) is not redirected, since it may
+  hold a lock the handler would stall; other code, the host CRT included, is.
+  The module table is read before the target is suspended (it may hold the
+  loader lock). The retry is bounded to 10 ms; a signal still dropped (EAGAIN)
+  is noted once on stderr. A handler that waits keeps the outer wait wakeable
+  (`wait_on_address` restores the address it found).
+- A per-thread Choreographer is driven by a 60 Hz timer through
+  `NativeLooper.scheduleVsync`/`takeVsync` (`host/native_looper.cpp`); Unity's
+  "UnityChoreographer" thread paces `UnityMain` with it. `/proc/cpuinfo` is
+  synthesized (`stdio.cpp`; Unity counts its cores from it), and a path near
+  MAX_PATH reaches the guest's file calls in its `\?\` form (`paths.cpp`).
 - On a GPU, GL frames, the view tree and SurfaceView frames reach the window as
   DirectComposition layers (`host/gl/gl_present.h`); without one (WARP,
   SwiftShader) or with "Enable GPU rendering" off, the window is painted from a

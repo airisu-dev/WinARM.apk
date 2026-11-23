@@ -233,7 +233,7 @@ public class Application extends ContextWrapper
         // subclass may override these getters and delegate back to its base.
         // Calling app.getXxx() here would re-enter that override and recurse.
         // Public Application getters remain overridable for app-facing calls.
-        @Override public android.content.pm.ApplicationInfo getApplicationInfo() { return app.macapkApplicationInfoReal(); }
+        @Override public android.content.pm.ApplicationInfo getApplicationInfo() { return app.macapkAppFacingInfo(); }
         @Override public PackageManager getPackageManager() { return app.macapkPackageManagerReal(); }
         // Serve from the REAL provider, NOT app.getSharedPreferences: an app that
         // overrides getSharedPreferences and delegates back to its base context
@@ -961,10 +961,59 @@ public class Application extends ContextWrapper
         try {
             android.content.pm.ApplicationInfo ai = macapkApplicationInfoReal();
             if (ai != null && ai.sourceDir != null && !ai.sourceDir.isEmpty()) {
-                return ai.sourceDir;
+                return macapkAndroidPath(ai.sourceDir);
             }
         } catch (Throwable ignored) {}
-        return apkPath != null ? apkPath : "";
+        return apkPath != null ? macapkAndroidPath(apkPath) : "";
+    }
+
+    /** The Android spelling of a file under the android root (/data/app/~~h/pkg-h/base.apk), which the host maps
+     *  back. Native players index the APK only for a path that starts with '/'. Only the two code-path getters use
+     *  it: sourceDir stays the host file the ELF and dex loaders open. A path outside the root is returned as is. */
+    private static String macapkAndroidPath(String host) {
+        String root = System.getProperty("winapk.android.root");
+        if (root == null || host == null) return host;
+        String h = host.replace('\\', '/');
+        String r = root.replace('\\', '/');
+        if (!r.endsWith("/")) r += "/";
+        return h.regionMatches(true, 0, r, 0, r.length()) ? "/" + h.substring(r.length()) : host;
+    }
+
+    /** The runtime's record and the copy the app was given for it, published
+     *  together so a reader never pairs one with the other's. */
+    private static final class AppFacing {
+        final android.content.pm.ApplicationInfo real, facing;
+        AppFacing(android.content.pm.ApplicationInfo real, android.content.pm.ApplicationInfo facing) {
+            this.real = real;
+            this.facing = facing;
+        }
+    }
+    private volatile AppFacing appFacing;
+
+    /** What the app itself is told: the runtime's own record keeps host paths, the app's copy names the split APKs
+     *  by their Android paths, as getPackageCodePath() names the base, so a native player's per-split lookups agree.
+     *  No lock: this is hot, and the Application's monitor is the app's to take. Two threads may each build an equal
+     *  copy; the last write wins. The app gets the same copy for as long as the runtime's record is the same
+     *  object, and what it writes into it never reaches the runtime's record. A null split list stays null. */
+    private android.content.pm.ApplicationInfo macapkAppFacingInfo() {
+        android.content.pm.ApplicationInfo real = macapkApplicationInfoReal();
+        if (real == null) return null;
+        AppFacing f = appFacing;
+        if (f == null || f.real != real) {
+            android.content.pm.ApplicationInfo copy = new android.content.pm.ApplicationInfo(real);
+            copy.splitSourceDirs = macapkAndroidPaths(real.splitSourceDirs);
+            copy.splitPublicSourceDirs = macapkAndroidPaths(real.splitPublicSourceDirs);
+            f = new AppFacing(real, copy);
+            appFacing = f;
+        }
+        return f.facing;
+    }
+
+    private static String[] macapkAndroidPaths(String[] host) {
+        if (host == null) return null;
+        String[] out = new String[host.length];
+        for (int i = 0; i < out.length; i++) out[i] = macapkAndroidPath(host[i]);
+        return out;
     }
     @Override public PackageManager getPackageManager() {
         Context d = macapkUninitDelegate();
@@ -1025,7 +1074,7 @@ public class Application extends ContextWrapper
 
     @Override
     public android.content.pm.ApplicationInfo getApplicationInfo() {
-        return macapkApplicationInfoReal();
+        return macapkAppFacingInfo();
     }
 
     /** The body of getApplicationInfo(), reached through OUR PackageManager

@@ -2368,6 +2368,7 @@ public class SurfaceView extends View implements MetalSurfaceCallbacks {
                     + reflectedRenderer + " m=" + reflectedOnDrawFrame
                     + ")");
             }
+            macapkWithholdTick();
             return;
         }
         // v1.0.64: log every 60th frame so the launcher panel shows
@@ -2726,6 +2727,19 @@ public class SurfaceView extends View implements MetalSurfaceCallbacks {
     public boolean macapkRendersOnOsMain() {
         return reflectedRenderer != null && reflectedOnDrawFrame != null
             && !osMainDeclinedRenderer;
+    }
+
+    private static boolean sWithholdNativeOk = true;
+
+    /** A tick that drew nothing (no renderer yet): the host must not present the view's empty pbuffer, which would
+     *  flash black over the frame a native engine rendering into the window itself last drew. */
+    private static void macapkWithholdTick() {
+        if (!sWithholdNativeOk) return;
+        try {
+            NativeCocoa.beginWithheldTick(false);
+        } catch (UnsatisfiedLinkError e) {
+            sWithholdNativeOk = false;
+        }
     }
 
     /** OS-main's verdict for this frame: true when the app's own GL thread

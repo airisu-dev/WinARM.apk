@@ -144,6 +144,27 @@ std::string proc_maps_text() {
     return linker ? linker->proc_maps() : std::string();
 }
 
+// /proc/cpuinfo, as an arm64 kernel prints it: a block per logical processor, then the board. Apps count their
+// cores from the "processor" lines.
+bool is_proc_cpuinfo(const char* path) { return path && std::strcmp(path, "/proc/cpuinfo") == 0; }
+
+std::string proc_cpuinfo_text() {
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    std::string features = "fp asimd evtstrm";
+    if (IsProcessorFeaturePresent(PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE)) features += " aes pmull sha1 sha2";
+    if (IsProcessorFeaturePresent(PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE)) features += " crc32";
+    if (IsProcessorFeaturePresent(PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE)) features += " atomics";
+    if (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE)) features += " asimddp";
+    std::string text;
+    for (DWORD i = 0; i < si.dwNumberOfProcessors; ++i) {
+        text += "processor\t: " + std::to_string(i) + "\nBogoMIPS\t: 38.40\nFeatures\t: " + features +
+                "\nCPU implementer\t: 0x41\nCPU architecture: 8\nCPU variant\t: 0x0\nCPU part\t: 0xd0c\n"
+                "CPU revision\t: 0\n\n";
+    }
+    return text + "Hardware\t: Win.apk\n";
+}
+
 bool is_random_device(const char* path) {
     return path && (std::strcmp(path, "/dev/urandom") == 0 || std::strcmp(path, "/dev/random") == 0);
 }
@@ -164,9 +185,7 @@ bool fd_host_path(int fd, std::wstring* out) {
     }
     // "\\?\C:\dir" or "\\?\UNC\server\share\dir": the prefix goes, because
     // under it a '/' in the guest's part of a joined path is no separator.
-    out->assign(buf, n);
-    if (out->compare(0, 8, L"\\\\?\\UNC\\") == 0) out->replace(0, 8, L"\\\\");
-    else if (out->compare(0, 4, L"\\\\?\\") == 0) out->erase(0, 4);
+    *out = plain_path(std::wstring(buf, n));
     return true;
 }
 
@@ -262,6 +281,7 @@ WINAPK_GUEST_ABI int g_mknod(const char* path, unsigned mode, uint64_t) {
 WINAPK_GUEST_ABI int g_open(const char* path, int flags, unsigned mode) {
     if (is_random_device(path)) return fd_install(std::make_shared<RandomDevice>());
     if (is_proc_maps(path)) return open_temp_with(proc_maps_text());
+    if (is_proc_cpuinfo(path)) return open_temp_with(proc_cpuinfo_text());
     const std::wstring w = host_path(path);
     if (is_fifo_marker(w)) return fifo_open(fifo_key(w), flags);
     // Linux opens a directory read-only without O_DIRECTORY too (O_PATH or
@@ -634,7 +654,7 @@ void fill_identity(HANDLE h, GuestStat* g) {
     g->st_ino = (static_cast<uint64_t>(info.nFileIndexHigh) << 32) | info.nFileIndexLow;
 }
 WINAPK_GUEST_ABI int g_stat(const char* path, GuestStat* g) {
-    if (is_proc_maps(path)) {  // a regular file of no length, as procfs reports its files
+    if (is_proc_maps(path) || is_proc_cpuinfo(path)) {  // a regular file of no length, as procfs reports its files
         std::memset(g, 0, sizeof(*g));
         g->st_mode = 0100444;  // S_IFREG | r--r--r--
         g->st_nlink = 1;
@@ -828,7 +848,7 @@ WINAPK_GUEST_ABI int g_access(const char* path, int mode) {
     // /proc/self/maps is no file on disk, yet it is there and readable, as open() and
     // fopen() have it. Mono asks before it starts ("Mono requires /proc to be mounted."
     // and exit(1) when access() says no), so every Xamarin and .NET app stopped here.
-    if (is_proc_maps(path)) {
+    if (is_proc_maps(path) || is_proc_cpuinfo(path)) {
         if (mode & 2) {
             errno = EACCES;
             return fail_crt();
@@ -900,11 +920,13 @@ WINAPK_GUEST_ABI char* g_realpath(const char* path, char* out) {
         set_errno_from_win32(GetLastError());
         return nullptr;
     }
+    // `full` keeps the extended-length prefix host_path gave a long path, which the attribute check needs and the
+    // guest must not see.
     if (GetFileAttributesW(full) == INVALID_FILE_ATTRIBUTES) {
         set_errno_from_win32(GetLastError());
         return nullptr;
     }
-    const std::string s = narrow(full);
+    const std::string s = narrow(plain_path(full).c_str());
     if (!out) return _strdup(s.c_str());
     std::strncpy(out, s.c_str(), 4095);
     out[4095] = '\0';
@@ -1165,9 +1187,7 @@ std::wstring final_path_of_handle(HANDLE h) {
     wchar_t buf[2048];
     const DWORD n = GetFinalPathNameByHandleW(h, buf, 2048, FILE_NAME_NORMALIZED);
     if (n == 0 || n >= 2048) return {};
-    std::wstring p(buf, n);
-    if (p.rfind(L"\\\\?\\", 0) == 0) p.erase(0, 4);
-    return p;
+    return plain_path(std::wstring(buf, n));
 }
 // The link target as a host path, or empty with errno set.
 std::wstring link_target(const char* path) {
@@ -1784,8 +1804,9 @@ FILE* open_random_stream() {
 }
 WINAPK_GUEST_ABI FILE* g_fopen(const char* path, const char* mode) {
     if (is_random_device(path)) return open_random_stream();
-    if (is_proc_maps(path)) {
-        const int fd = open_temp_with(proc_maps_text());
+    const bool maps = is_proc_maps(path);
+    if (maps || is_proc_cpuinfo(path)) {
+        const int fd = open_temp_with(maps ? proc_maps_text() : proc_cpuinfo_text());
         if (fd < 0) return nullptr;
         FILE* f = _fdopen(fd, "rb");
         if (!f) {

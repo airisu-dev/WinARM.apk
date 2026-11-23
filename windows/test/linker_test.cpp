@@ -235,6 +235,26 @@ int main(int argc, char** argv) {
               error.find("not found") != std::string::npos,
           error);
 
+    // A library under a directory past MAX_PATH (an app's lib\arm64 under a long data folder) opens by its full
+    // path, which the process cannot name in its plain form.
+    {
+        namespace fs = std::filesystem;
+        const fs::path stem = fs::temp_directory_path() / L"winapk-linker-long-path";
+        fs::path deep = stem;
+        while (deep.native().size() < 300) deep /= L"a_long_directory_name_for_the_test";
+        std::error_code ec;
+        const std::wstring prefix = L"\\\\?\\";
+        fs::create_directories(fs::path(prefix + deep.native()), ec);
+        const fs::path target = deep / L"libwinapk_link_base.so";
+        fs::copy_file(fs::path(argv[1]) / L"libwinapk_link_base.so", fs::path(prefix + target.native()),
+                      fs::copy_options::overwrite_existing, ec);
+        std::string long_error;
+        void* h = linker.open(target.u8string(), 0, &long_error);
+        check("a library opens by a full path longer than MAX_PATH", h != nullptr, long_error);
+        if (h) linker.close(h, &long_error);
+        fs::remove_all(fs::path(prefix + stem.native()), ec);
+    }
+
     // dlclose from the host's side: reference counts and the registry.
     void* plugin = linker.open(kPlugin, winapk::GuestLinker::kRtldNow, &error);
     void* square = plugin ? linker.lookup(plugin, "link_plugin_square", nullptr, &error) : nullptr;
