@@ -7,6 +7,8 @@
 
 #include "host_natives.h"
 
+#include "vsync_grid.h"
+
 #include "winapk/mini_bionic.h"
 
 #include <condition_variable>
@@ -53,7 +55,7 @@ constexpr int64_t kVsyncIntervalNs = 1000000000LL / 60;
 struct VsyncSlot {
     bool requested = false;     // scheduleVsync called, no tick since
     bool delivered = false;     // a tick answered it, takeVsync has not taken it
-    int64_t frame_time_ns = 0;  // that tick's System.nanoTime()
+    int64_t frame_time_ns = 0;  // that tick's grid time, in System.nanoTime()'s timebase
 };
 // Leaked: the timer thread can still run while static destructors do.
 std::mutex& vsync_lock() {
@@ -95,25 +97,28 @@ void vsync_timer_thread() {
                 return false;
             });
         }
-        // A tick on the grid of the last one, or a new grid after an idle stretch.
-        const int64_t now = java_nano_time();
-        next = next + kVsyncIntervalNs > now ? next + kVsyncIntervalNs : now + kVsyncIntervalNs;
-        LARGE_INTEGER due;
-        due.QuadPart = -(next - now) / 100;  // relative, in 100 ns
-        if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) {
-            WaitForSingleObject(timer, INFINITE);
-        } else {
-            Sleep(static_cast<DWORD>((next - now) / 1000000));
+        // The next slot of the fixed grid; after an idle stretch that is the first slot not in the past.
+        next = next_grid_tick(next, java_nano_time(), kVsyncIntervalNs);
+        // Never wake before `next`: a timer or a whole-millisecond sleep can end early, so wait out the rest.
+        for (int64_t left; (left = next - java_nano_time()) > 0;) {
+            LARGE_INTEGER due;
+            due.QuadPart = -(left / 100 + 1);  // relative, in 100 ns, rounded up
+            if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE)) {
+                WaitForSingleObject(timer, INFINITE);
+            } else if (left > 2000000) {
+                Sleep(static_cast<DWORD>(left / 1000000 - 1));
+            } else {
+                SwitchToThread();
+            }
         }
         std::vector<void*> woken;
         {
             std::lock_guard<std::mutex> hold(vsync_lock());
-            const int64_t stamp = java_nano_time();
             for (auto& [looper, slot] : vsync_slots()) {
                 if (!slot.requested) continue;
                 slot.requested = false;
                 slot.delivered = true;
-                slot.frame_time_ns = stamp;
+                slot.frame_time_ns = next;
                 woken.push_back(looper);
             }
         }
