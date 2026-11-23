@@ -1382,7 +1382,7 @@ int64_t guest_futex(uint32_t* uaddr, int op, uint32_t val, const GuestTimespec* 
             }
             ms = ns <= 0 ? 0 : static_cast<DWORD>((ns + 999999) / 1000000);
         }
-        if (!WaitOnAddress(uaddr, &val, sizeof(val), ms) && GetLastError() == ERROR_TIMEOUT) {
+        if (!wait_on_address(uaddr, &val, sizeof(val), ms) && GetLastError() == ERROR_TIMEOUT) {
             *guest_errno() = kETIMEDOUT;
             return -1;
         }

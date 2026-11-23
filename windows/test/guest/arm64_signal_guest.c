@@ -261,3 +261,39 @@ EXPORT int sig_thread(void) {
     uninstall(SIGUSR1);
     return g_hit && g_handler_tid == g_worker_tid && g_handler_tid != gettid() ? 1 : -2;
 }
+
+// A thread asleep in sem_wait takes the signal too: Boehm's suspend signal goes to threads parked on locks.
+int sem_init(void*, int, unsigned);
+int sem_wait(void*);
+int sem_post(void*);
+int usleep(unsigned);
+static long g_sem[2];
+static volatile int g_sleeping, g_slept_hit;
+static void on_usr1_sleeper(int sig) {
+    (void)sig;
+    g_slept_hit = 1;
+}
+static void* sleeper(void* arg) {
+    (void)arg;
+    g_sleeping = 1;
+    sem_wait(g_sem);
+    return 0;
+}
+EXPORT int sig_blocked_thread(void) {
+    g_sleeping = g_slept_hit = 0;
+    install(SIGUSR1, on_usr1_sleeper, 0);
+    sem_init(g_sem, 0, 0);
+    pthread_t t;
+    if (pthread_create(&t, 0, sleeper, 0) != 0) return -1;
+    for (int i = 0; i < 20000000 && !g_sleeping; ++i) sched_yield();
+    usleep(300000);  // the sleeper has blocked in sem_wait by now
+    for (int i = 0; i < 1000 && !g_slept_hit; ++i) {
+        pthread_kill(t, SIGUSR1);
+        for (int j = 0; j < 100000 && !g_slept_hit; ++j) sched_yield();
+    }
+    const int hit = g_slept_hit;
+    sem_post(g_sem);
+    pthread_join(t, 0);
+    uninstall(SIGUSR1);
+    return hit ? 1 : -2;
+}

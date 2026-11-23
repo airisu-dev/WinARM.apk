@@ -18,8 +18,12 @@
 //     delivered right away, as a call; to another thread by suspending it,
 //     parking its registers on its own stack and resuming it in
 //     winapk_sig_async_entry, which runs the handler there and restores the
-//     registers (RtlRestoreContext). A signal blocked by the target's mask is
-//     left pending and delivered when sigprocmask unblocks it.
+//     registers (RtlRestoreContext). It is redirected only where it holds none of a
+//     Windows DLL's locks (safe_to_redirect), and woken with WakeByAddressAll
+//     when it sleeps in a WaitOnAddress wait (wait_on_address), which would
+//     otherwise keep the redirect from running until something wakes it. A
+//     signal blocked by the target's mask is left pending and delivered when
+//     sigprocmask unblocks it.
 //
 // Semantics follow Linux and ART's libsigchain (what a device does, upstream's
 // bionic_shim_sigchain.cpp being the reference):
@@ -56,6 +60,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <unordered_map>
 
 #include <windows.h>
 
@@ -460,10 +465,41 @@ void ucontext_to_context(const GuestUcontextA64& uc, CONTEXT* c) {
 }
 
 
+// The virtual x18 and the register a thunk borrows live in two slots of the thread's TEB, one set per thread. A handler
+// that interrupts a thunk runs rewritten code of its own, which overwrites them; the interrupted thunk then reads
+// the handler's values (a table pointer lost from its register, an x18 that is not the library's). Boehm's suspend
+// signal reaches Unity's loading threads in the middle of such code.
+class VirtualX18Saved {
+public:
+    VirtualX18Saved() {
+        on_ = x18_slot_offsets(&value_offset_, &scratch_offset_);
+        if (on_) {
+            value_ = *slot(value_offset_);
+            scratch_ = *slot(scratch_offset_);
+        }
+    }
+    ~VirtualX18Saved() {
+        if (!on_) return;
+        *slot(value_offset_) = value_;
+        *slot(scratch_offset_) = scratch_;
+    }
+    VirtualX18Saved(const VirtualX18Saved&) = delete;
+    VirtualX18Saved& operator=(const VirtualX18Saved&) = delete;
+
+private:
+    static uint64_t* slot(uint32_t offset) {
+        return reinterpret_cast<uint64_t*>(reinterpret_cast<uint8_t*>(NtCurrentTeb()) + offset);
+    }
+    bool on_ = false;
+    uint32_t value_offset_ = 0, scratch_offset_ = 0;
+    uint64_t value_ = 0, scratch_ = 0;
+};
+
 // Runs `act` for `sig` with Linux's handler mask; what the handler leaves in the ucontext goes back to `ctx`.
 void run_handler(int sig, const GuestSigaction& act, GuestSiginfo* info, CONTEXT* ctx, uint64_t = 0, uint64_t = 0) {
     ThreadSignals& ts = t_sig;
     ++ts.handlers_run;
+    VirtualX18Saved virtual_x18;
     alignas(16) GuestUcontextA64 uc;
     std::memset(&uc, 0, sizeof(uc));
     context_to_ucontext(*ctx, &uc);
@@ -802,6 +838,55 @@ extern "C" void winapk_sig_async_entry(int sig, CONTEXT* saved) {
     __builtin_unreachable();
 }
 
+// The address each thread is sleeping on in wait_on_address, by Windows thread id, so a signal sent to it can wake
+// it. A slot is made once per thread and never freed: a reused id replaces its entry, and no reader is left
+// holding a slot that went away.
+struct WaitSlot {
+    std::atomic<void*> address{nullptr};
+};
+std::mutex g_wait_lock;
+std::unordered_map<uint32_t, WaitSlot*> g_waits;
+
+WaitSlot* wait_slot() {
+    thread_local WaitSlot* slot = nullptr;
+    if (!slot) {
+        slot = new WaitSlot;
+        std::lock_guard<std::mutex> hold(g_wait_lock);
+        g_waits[GetCurrentThreadId()] = slot;
+    }
+    return slot;
+}
+
+void* waiting_address(uint32_t tid) {
+    std::lock_guard<std::mutex> hold(g_wait_lock);
+    const auto it = g_waits.find(tid);
+    return it == g_waits.end() ? nullptr : it->second->address.load();
+}
+
+// Whether a thread stopped at `pc` can take a handler call. Code inside a Windows system DLL may hold one of
+// its locks (the hash bucket of WaitOnAddress, a heap's), and a handler that waits there (Boehm's suspend handler
+// sleeps until the restart signal) keeps every other thread that needs the lock spinning, the collector's own
+// sem_wait among them: Unity never got past its first frame. A thread blocked in a system call holds none, so
+// pc at a `svc` (or just after one) is fine.
+bool safe_to_redirect(uint64_t pc) {
+    HMODULE module = nullptr;
+    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                            reinterpret_cast<LPCWSTR>(pc), &module)) {
+        return true;  // guest code, or code the host generated
+    }
+    wchar_t file[MAX_PATH], system[MAX_PATH];
+    const UINT n = GetSystemWindowsDirectoryW(system, MAX_PATH);
+    const DWORD m = GetModuleFileNameW(module, file, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH || m == 0 || m >= MAX_PATH || _wcsnicmp(file, system, n) != 0) return true;
+    for (const uint64_t at : {pc - 4, pc}) {
+        uint32_t word = 0;
+        std::memcpy(&word, reinterpret_cast<const void*>(at), sizeof(word));
+        if ((word & 0xffe0001f) == 0xd4000001) return true;  // svc #imm16
+    }
+    return false;
+}
+constexpr int kRedirectAttempts = 200;
+
 // The target's registers are parked below its stack pointer and it resumes in the stub.
 // AAPCS64 has no red zone, so the parked copy sits right under sp.
 int inject(uint32_t tid, int sig) {
@@ -811,15 +896,26 @@ int inject(uint32_t tid, int sig) {
     // A tid is only a number: Windows reuses it, and a caller can name any. Checked on the open handle, so
     // the thread cannot change owner between the check and the suspend; another process's thread is not ours
     // to redirect.
-    if (GetProcessIdOfThread(h) != GetCurrentProcessId() || SuspendThread(h) == static_cast<DWORD>(-1)) {
+    if (GetProcessIdOfThread(h) != GetCurrentProcessId()) {
         CloseHandle(h);
         return kESRCH;
     }
     int result = 0;
     alignas(16) CONTEXT ctx;
-    std::memset(&ctx, 0, sizeof(ctx));
-    ctx.ContextFlags = CONTEXT_FULL;
-    if (!GetThreadContext(h, &ctx)) {
+    bool have_context = false;
+    for (int attempt = 0;; ++attempt) {
+        if (SuspendThread(h) == static_cast<DWORD>(-1)) {
+            CloseHandle(h);
+            return kESRCH;
+        }
+        std::memset(&ctx, 0, sizeof(ctx));
+        ctx.ContextFlags = CONTEXT_FULL;
+        have_context = GetThreadContext(h, &ctx) != 0;
+        if (!have_context || safe_to_redirect(ctx.Pc) || attempt == kRedirectAttempts) break;
+        ResumeThread(h);
+        Sleep(attempt < 16 ? 0 : 1);  // the thread is inside a system call's code: let it leave
+    }
+    if (!have_context || !safe_to_redirect(ctx.Pc)) {
         result = kEAGAIN;
     } else {
         const uint64_t slot = (ctx.Sp - sizeof(CONTEXT)) & ~uint64_t{15};
@@ -842,6 +938,16 @@ int inject(uint32_t tid, int sig) {
         }
     }
     ResumeThread(h);
+    // A thread blocked in WaitOnAddress (every futex, semaphore, condition variable and mutex wait here) takes the
+    // redirect only when that wait returns, so a signal sent to a sleeping thread never ran: Boehm's suspend signal
+    // went to a thread parked on a lock, the collector's retries piled up, and Unity's il2cpp never finished
+    // starting. WakeByAddressAll on its address ends the wait as any wake does, unlinking the waiter's wait block
+    // first; NtAlertThreadByThreadId alone left that block linked in the hash bucket on the waiter's stack, and the
+    // next wait at the same stack address made the bucket a cycle that every later WaitOnAddress spun on forever.
+    // Each wait rechecks its condition, so the other waiters on the address wake in vain.
+    if (result == 0) {
+        if (void* address = waiting_address(tid)) WakeByAddressAll(address);
+    }
     CloseHandle(h);
     return result;
 }
@@ -1048,6 +1154,16 @@ int signal_send(uint32_t tid, int sig) {
     if (sig == kSigStop) return 0;  // nothing to stop a windowed app for
     if (tid == 0 || tid == GetCurrentThreadId()) return raise_self(sig);
     return inject(tid, sig);
+}
+
+bool wait_on_address(void* address, void* compare, size_t size, unsigned long ms) {
+    WaitSlot* slot = wait_slot();
+    slot->address.store(address);
+    const BOOL ok = WaitOnAddress(address, compare, size, ms);
+    const DWORD error = ok ? 0 : GetLastError();
+    slot->address.store(nullptr);
+    if (!ok) SetLastError(error);
+    return ok != FALSE;
 }
 
 void signal_altstack_for_current_thread() {

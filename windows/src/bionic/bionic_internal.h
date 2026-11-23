@@ -85,6 +85,9 @@ constexpr int kEPERM = 1, kENOENT = 2, kEINTR = 4, kEIO = 5, kEBADF = 9, kEAGAIN
 // thread) the way tgkill does: delivered now if it is this thread, injected
 // into the other one otherwise. Returns 0 or a Linux errno.
 int signal_send(uint32_t tid, int sig);
+// WaitOnAddress, noting the address the calling thread sleeps on so that a signal injected into it wakes it (a plain
+// WaitOnAddress cannot be woken but by a write the waiter watches). Every wait on guest memory goes through it.
+bool wait_on_address(void* address, void* compare, size_t size, unsigned long ms);
 // The calling thread's blocked set, for sigsetjmp/siglongjmp (setjmp.cpp).
 uint64_t signal_mask_of_current_thread();
 void signal_set_mask_of_current_thread(uint64_t mask);

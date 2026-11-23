@@ -75,7 +75,7 @@ std::atomic<uint32_t> g_generation{0};
 // comes first, given the generation the caller saw before checking.
 void wait_for_change(uint32_t seen, DWORD ms) {
     uint32_t expected = seen;
-    WaitOnAddress(&g_generation, &expected, sizeof(expected), ms);
+    wait_on_address(&g_generation, &expected, sizeof(expected), ms);
 }
 
 uint64_t now_ms() { return GetTickCount64(); }

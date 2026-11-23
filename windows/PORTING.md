@@ -200,7 +200,14 @@ with a drive-letter path it `stat`s the entry as a plain file, so
   as `ro.product.cpu.abi`, `uname`'s machine); arm64 apps get arm64 layouts
   through `arm64_abi.cpp`, but these values are to be checked.
 - Signals are delivered for faults and self-sent signals
-  (`src/bionic/signal.cpp`); POSIX timers are recorded only.
+  (`src/bionic/signal.cpp`); POSIX timers are recorded only. A signal to a thread
+  asleep in a futex, semaphore or mutex wait wakes it to run the handler (Boehm
+  GC's suspend signal, which Unity's il2cpp needs to start). The wake is
+  `WakeByAddressAll` on the address the thread waits on (`wait_on_address`):
+  `NtAlertThreadByThreadId` leaves the waiter's wait block linked in the
+  WaitOnAddress hash bucket, and the next wait at that stack address turned the
+  bucket into a cycle every later wait spun on. A thread inside a Windows DLL's
+  code (not at a `svc`) is not redirected, since it may hold the DLL's lock.
 - On a GPU, GL frames, the view tree and SurfaceView frames reach the window as
   DirectComposition layers (`host/gl/gl_present.h`); without one (WARP,
   SwiftShader) or with "Enable GPU rendering" off, the window is painted from a

@@ -472,6 +472,7 @@ void run_signals(winapk::GuestLinker& linker, const char* file) {
     check("SA_ONSTACK: the handler runs on the alternate stack, uc_stack says so", call0("sig_altstack") == 1);
     check("siglongjmp out of a SIGSEGV handler, three times (the mask comes back)", call0("sig_longjmp") == 1);
     check("pthread_kill: the handler runs on the target thread", call0("sig_thread") == 1);
+    check("pthread_kill: a thread asleep in sem_wait runs the handler", call0("sig_blocked_thread") == 1);
 }
 
 void run_unload(winapk::GuestLinker& linker, const char* file) {
