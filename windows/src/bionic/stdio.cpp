@@ -185,9 +185,7 @@ bool fd_host_path(int fd, std::wstring* out) {
     }
     // "\\?\C:\dir" or "\\?\UNC\server\share\dir": the prefix goes, because
     // under it a '/' in the guest's part of a joined path is no separator.
-    out->assign(buf, n);
-    if (out->compare(0, 8, L"\\\\?\\UNC\\") == 0) out->replace(0, 8, L"\\\\");
-    else if (out->compare(0, 4, L"\\\\?\\") == 0) out->erase(0, 4);
+    *out = plain_path(std::wstring(buf, n));
     return true;
 }
 
@@ -922,11 +920,13 @@ WINAPK_GUEST_ABI char* g_realpath(const char* path, char* out) {
         set_errno_from_win32(GetLastError());
         return nullptr;
     }
+    // `full` keeps the extended-length prefix host_path gave a long path, which the attribute check needs and the
+    // guest must not see.
     if (GetFileAttributesW(full) == INVALID_FILE_ATTRIBUTES) {
         set_errno_from_win32(GetLastError());
         return nullptr;
     }
-    const std::string s = narrow(full);
+    const std::string s = narrow(plain_path(full).c_str());
     if (!out) return _strdup(s.c_str());
     std::strncpy(out, s.c_str(), 4095);
     out[4095] = '\0';
@@ -1187,9 +1187,7 @@ std::wstring final_path_of_handle(HANDLE h) {
     wchar_t buf[2048];
     const DWORD n = GetFinalPathNameByHandleW(h, buf, 2048, FILE_NAME_NORMALIZED);
     if (n == 0 || n >= 2048) return {};
-    std::wstring p(buf, n);
-    if (p.rfind(L"\\\\?\\", 0) == 0) p.erase(0, 4);
-    return p;
+    return plain_path(std::wstring(buf, n));
 }
 // The link target as a host path, or empty with errno set.
 std::wstring link_target(const char* path) {

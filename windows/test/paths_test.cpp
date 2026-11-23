@@ -18,6 +18,7 @@
 #include <iterator>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <windows.h>
 
@@ -147,6 +148,46 @@ void listing_round_trip() {
     }
 }
 
+// realpath and readlink of a file past MAX_PATH answer with the plain path: the extended-length prefix host_path
+// opens it with must not reach the guest.
+void long_path_reported() {
+    const auto g_realpath = shim<char* (WINAPK_GUEST_ABI*)(const char*, char*)>("realpath");
+    wchar_t temp[MAX_PATH];
+    GetTempPathW(MAX_PATH, temp);
+    const std::wstring base = std::wstring(temp) + L"winapk-paths-long-" + std::to_wstring(GetCurrentProcessId());
+    std::wstring dir = L"\\\\?\\" + base;
+    CreateDirectoryW(dir.c_str(), nullptr);
+    std::vector<std::wstring> made{dir};
+    while (dir.size() < 300) {
+        dir += L"\\" + std::wstring(40, L'd');
+        CreateDirectoryW(dir.c_str(), nullptr);
+        made.push_back(dir);
+    }
+    const std::wstring file = dir + L"\\f.txt";
+    HANDLE h = CreateFileW(file.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) {
+        ++g_failed;
+        std::fprintf(stderr, "FAIL long path: cannot create the file\n");
+    } else {
+        CloseHandle(h);
+        const std::wstring plain = file.substr(4);
+        char guest[2048];
+        WideCharToMultiByte(CP_UTF8, 0, plain.c_str(), -1, guest, sizeof guest, nullptr, nullptr);
+        char out[4096];
+        char* r = g_realpath(guest, out);
+        if (!r) {
+            ++g_failed;
+            std::fprintf(stderr, "FAIL realpath of a long path failed\n");
+        } else {
+            wchar_t back[2048];
+            MultiByteToWideChar(CP_UTF8, 0, r, -1, back, 2048);
+            exact("realpath long", back, plain);
+        }
+        DeleteFileW(file.c_str());
+    }
+    for (size_t i = made.size(); i-- > 0;) RemoveDirectoryW(made[i].c_str());
+}
+
 }  // namespace
 
 int main() {
@@ -255,6 +296,7 @@ int main() {
     exact("plain empty", winapk::plain_path(L""), L"");
 
     listing_round_trip();
+    long_path_reported();
 
     if (g_failed == 0) std::fprintf(stderr, "paths_test: all checks passed\n");
 
