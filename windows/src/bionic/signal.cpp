@@ -1158,10 +1158,11 @@ int signal_send(uint32_t tid, int sig) {
 
 bool wait_on_address(void* address, void* compare, size_t size, unsigned long ms) {
     WaitSlot* slot = wait_slot();
-    slot->address.store(address);
+    // A handler that runs on this thread may wait too: restoring what was there keeps an outer wait findable.
+    void* const outer = slot->address.exchange(address);
     const BOOL ok = WaitOnAddress(address, compare, size, ms);
     const DWORD error = ok ? 0 : GetLastError();
-    slot->address.store(nullptr);
+    slot->address.store(outer);
     if (!ok) SetLastError(error);
     return ok != FALSE;
 }
