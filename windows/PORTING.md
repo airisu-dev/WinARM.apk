@@ -112,6 +112,12 @@ the page distance is the same as in the file.
 `WINAPK_ARM64_X18_REWRITE=0` refuses such a library instead, and
 `WINAPK_ARM64_ALLOW_X18=1` loads it unchanged, for investigation.
 
+D7. **A closing window unmaps no guest library.** The app's teardown (onDestroy, then the JVM's class unloading) can dlclose
+libunity.so while its render and worker threads still run in it, and a thread that returns into the unmapped image ended
+the process with 0xC0000005 instead of 0 (no crash line: the fault was in memory no module holds). From the first
+close request `GuestLinker::retain_libraries()` makes dlclose drop its reference and nothing more: no finalizers, no
+unmapping. The process ends within the teardown cap anyway, and Android does not unmap at exit either.
+
 ## 4. Technical findings
 
 ### Loader and ABI
@@ -218,6 +224,22 @@ with a drive-letter path it `stat`s the entry as a plain file, so
   loader lock). The retry is bounded to 10 ms; a signal still dropped (EAGAIN)
   is noted once on stderr. A handler that waits keeps the outer wait wakeable
   (`wait_on_address` restores the address it found).
+- Raw signal calls an arm64 library makes (`syscall()` or `svc`: tkill, tgkill,
+  rt_sigqueueinfo, rt_tgsigqueueinfo) deliver as the shim's `tkill`, `tgkill`
+  and `kill` do, to this process only; the queued `siginfo` is dropped, so the
+  handler sees `SI_TKILL`. A crash reporter's handler (Crashlytics) ends by
+  queueing the fault's signal again with the old action restored, and calls
+  `_exit(191)` when that call fails: before these were answered it showed up
+  as "guest called _exit(191)" after a `fork()` that failed with ENOSYS (the
+  reporter starts its crash-handler process first and carries on without it), and
+  hid the app's own fault.
+- `process_vm_readv` / `process_vm_writev` (libc functions, `syscall()` 270/271 on arm64, 310/311 for
+  the shim's x86_64 numbers) work on this process only (`ESRCH` for another pid, `EINVAL` for flags or more
+  than 1024 segments) and answer an unreadable address with `EFAULT`, or the bytes copied before it, as
+  Linux does (`Read`/`WriteProcessMemory` on the process itself). Unity's crash reporter reads 256 bytes
+  around each register with them and, when they fail with `ENOSYS`, copies by hand: with a register
+  holding 0 that faulted inside the signal handler (`ucrtbase` memmove, NULL source) and ended the
+  process before Unity's own report, and anything after it, could finish.
 - A per-thread Choreographer is driven by a 60 Hz timer through
   `NativeLooper.scheduleVsync`/`takeVsync` (`host/native_looper.cpp`); Unity's
   "UnityChoreographer" thread paces `UnityMain` with it. `/proc/cpuinfo` is

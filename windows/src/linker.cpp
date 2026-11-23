@@ -7,6 +7,7 @@
 #include "winapk/mini_bionic.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <unordered_set>
@@ -34,6 +35,7 @@ struct GuestLibrary {
 namespace {
 
 GuestLinker* g_process_linker = nullptr;
+std::atomic<bool> g_retain_libraries{false};
 
 // The libraries an app can link against without shipping them: the NDK's
 // stable APIs plus the rest of /system/etc/public.libraries.txt. Same list as
@@ -116,6 +118,8 @@ void GuestLinker::add_unload_hook(UnloadHook hook, void* context) {
 }
 
 GuestLinker* GuestLinker::process() { return g_process_linker; }
+
+void GuestLinker::retain_libraries() { g_retain_libraries.store(true); }
 
 const ElfImage* GuestLinker::image_of(const GuestLibrary* lib) { return lib ? lib->image.get() : nullptr; }
 
@@ -378,7 +382,7 @@ std::unordered_set<GuestLibrary*> GuestLinker::alive() const {
 }
 
 void GuestLinker::unload_if_unreferenced(GuestLibrary* lib) {
-    if (lib->ref_count > 0 || lib->nodelete) return;
+    if (lib->ref_count > 0 || lib->nodelete || g_retain_libraries.load()) return;
     const std::unordered_set<GuestLibrary*> kept = alive();
     if (!kept.count(lib)) unload(lib, kept);
 }

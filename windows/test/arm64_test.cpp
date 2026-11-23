@@ -469,6 +469,8 @@ void run_signals(winapk::GuestLinker& linker, const char* file) {
     check("raise() runs the handler before returning, with siginfo and ucontext", call0("sig_raise") == 1);
     check("... as a tkill (SI_TKILL -6)", call0("sig_raise_code") == -6);
     check("... with its signal blocked while it runs", call0("sig_mask_blocked") == 1);
+    check("tkill, tgkill, rt_sigqueueinfo and rt_tgsigqueueinfo by syscall() deliver like raise()",
+          call0("sig_raw_calls") == 1);
     check("SA_ONSTACK: the handler runs on the alternate stack, uc_stack says so", call0("sig_altstack") == 1);
     check("siglongjmp out of a SIGSEGV handler, three times (the mask comes back)", call0("sig_longjmp") == 1);
     check("pthread_kill: the handler runs on the target thread", call0("sig_thread") == 1);

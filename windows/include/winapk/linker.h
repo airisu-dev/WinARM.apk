@@ -94,6 +94,12 @@ public:
 
     static GuestLinker* process();
 
+    // From now on dlclose drops the reference but unloads nothing: no finalizers, no unmapping. For a process that is
+    // about to end while the app's other threads still run code from its libraries (a closing window: Unity's
+    // teardown unloads libunity.so with its render and worker threads alive, and a thread that returns into the
+    // unmapped image ends the process with an access violation). Android never unmaps at exit either.
+    static void retain_libraries();
+
     // Loads `name` and its dependencies, or returns the library if it is
     // already loaded (matched by path, soname or file name). `name` is UTF-8:
     // a path if it contains a slash or a backslash, else a file name looked up

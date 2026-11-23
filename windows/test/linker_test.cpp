@@ -358,6 +358,17 @@ int main(int argc, char** argv) {
     check("RTLD_DEFAULT finds the global library before libc",
           from_interpose(linker.lookup(nullptr, "strlen", nullptr, &error)));
 
+    // Last: retaining lasts for the rest of the process. A closing app's teardown dlcloses while its threads still
+    // run the code, and nothing is unmapped then.
+    winapk::GuestLinker::retain_libraries();
+    if (void* const doomed = linker.open(kPlugin, winapk::GuestLinker::kRtldNow, &error)) {
+        void* const fn = linker.lookup(doomed, "link_plugin_square", nullptr, &error);
+        check("after retain_libraries the last dlclose unmaps nothing",
+              fn && linker.close(doomed, &error) == 0 && loaded(linker, kPlugin) && linker.image_containing(fn));
+    } else {
+        check("open the plugin before retaining", false, error);
+    }
+
     std::printf("\n%s: %d failure(s)\n", g_failures ? "FAILED" : "OK", g_failures);
     return g_failures;
 }
