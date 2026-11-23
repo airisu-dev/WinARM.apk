@@ -195,7 +195,7 @@ bool is_android_path(const char* p) {
     return p[0] == '/' && p[1] != '/';
 }
 
-std::wstring host_path(const char* p) {
+std::wstring host_path_short(const char* p) {
     if (!p) return {};
     size_t len = std::strlen(p);
     p = meant_path(p, &len);
@@ -238,6 +238,24 @@ std::wstring host_path(const char* p) {
     return g_android_root + host_names(p, len);
 }
 
+// A path near MAX_PATH in its long-path form (the \\?\ prefix). This process has no longPathAware manifest, and
+// LongPathsEnabled is off by default, so a file of an app under a long data folder failed to open with ENOENT: an
+// il2cpp resource copy (files\il2cpp\Resources\Microsoft.Extensions.Logging.Abstractions.dll-resources.dat) made
+// libunity report "Not enough storage space to install required resources".
+std::wstring host_path(const char* p) {
+    std::wstring w = host_path_short(p);
+    const std::wstring prefix = {L'\\', L'\\', L'?', L'\\'};
+    if (w.size() < MAX_PATH - 12 || w.rfind(prefix, 0) == 0 || w == L"NUL") return w;
+    const DWORD n = GetFullPathNameW(w.c_str(), 0, nullptr, nullptr);
+    if (n == 0) return w;
+    std::wstring full(n, L'\0');
+    const DWORD m = GetFullPathNameW(w.c_str(), n, &full[0], nullptr);
+    if (m == 0 || m >= n) return w;
+    full.resize(m);
+    if (full.compare(0, 2, L"\\\\") == 0) return prefix + L"UNC" + full.substr(1);
+    return prefix + full;
+}
+
 }  // namespace winapk::bionic
 
 namespace winapk {
@@ -251,7 +269,7 @@ void set_app_data(const char* package, const char* host_dir) {
     bionic::g_app_package = package ? package : "";
     bionic::g_app_data_dir = bionic::trimmed(bionic::to_wide(host_dir, host_dir ? std::strlen(host_dir) : 0));
 }
-std::wstring android_host_path(const char* path) { return bionic::host_path(path); }
+std::wstring android_host_path(const char* path) { return bionic::host_path_short(path); }
 std::wstring android_file_name(std::wstring host_name) {
     if (!host_name.empty()) bionic::android_name(&host_name[0]);
     return host_name;

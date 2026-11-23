@@ -119,6 +119,8 @@ std::string format_va(const char* fmt, SysVVaList* va);
 // paths.cpp: the host path for a guest path (Android's absolute paths are
 // mapped under the android root; see paths.cpp).
 std::wstring host_path(const char* guest_path);
+// The same without the long-path form (the \\?\ prefix) that host_path gives a path near MAX_PATH.
+std::wstring host_path_short(const char* guest_path);
 // Whether host_path() maps `guest_path` as an Android path; a host path it
 // leaves as it is.
 bool is_android_path(const char* guest_path);
