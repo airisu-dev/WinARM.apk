@@ -227,6 +227,13 @@ with a drive-letter path it `stat`s the entry as a plain file, so
   as "guest called _exit(191)" after a `fork()` that failed with ENOSYS (the
   reporter starts its crash-handler process first and carries on without it), and
   hid the app's own fault.
+- `process_vm_readv` / `process_vm_writev` (libc functions, `syscall()` 270/271 on arm64, 310/311 for
+  the shim's x86_64 numbers) work on this process only (`ESRCH` for another pid, `EINVAL` for flags or more
+  than 1024 segments) and answer an unreadable address with `EFAULT`, or the bytes copied before it, as
+  Linux does (`Read`/`WriteProcessMemory` on the process itself). Unity's crash reporter reads 256 bytes
+  around each register with them and, when they fail with `ENOSYS`, copies by hand: with a register
+  holding 0 that faulted inside the signal handler (`ucrtbase` memmove, NULL source) and ended the
+  process before Unity's own report, and anything after it, could finish.
 - A per-thread Choreographer is driven by a 60 Hz timer through
   `NativeLooper.scheduleVsync`/`takeVsync` (`host/native_looper.cpp`); Unity's
   "UnityChoreographer" thread paces `UnityMain` with it. `/proc/cpuinfo` is

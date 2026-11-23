@@ -1396,6 +1396,58 @@ int64_t guest_futex(uint32_t* uaddr, int op, uint32_t val, const GuestTimespec* 
     *guest_errno() = kENOSYS;
     return -1;
 }
+// process_vm_readv(2) and process_vm_writev(2) of this process. A crash reporter reads the memory
+// around the registers with them (Unity) and, where they fail with ENOSYS, falls back to a plain
+// copy that faults on the first unmapped address (a register that holds 0). Linux answers an
+// unreadable address with EFAULT, or with the bytes copied before it; ReadProcessMemory and
+// WriteProcessMemory on this process report the same. Another process is not the app's to touch.
+struct ProcessVmIovec {
+    void* base;
+    size_t len;
+};
+int64_t process_vm_copy(int pid, const ProcessVmIovec* local, uint64_t local_n, const ProcessVmIovec* remote,
+                        uint64_t remote_n, uint64_t flags, bool write) {
+    constexpr uint64_t kIovMax = 1024;
+    if (flags != 0 || local_n > kIovMax || remote_n > kIovMax) return *guest_errno() = kEINVAL, -1;
+    if (pid != g_getpid()) return *guest_errno() = kESRCH, -1;
+    if ((local_n && !local) || (remote_n && !remote)) return *guest_errno() = kEFAULT, -1;
+    int64_t total = 0;
+    uint64_t li = 0, ri = 0;
+    size_t lo = 0, ro = 0;  // the bytes of local[li] and remote[ri] already copied
+    while (li < local_n && ri < remote_n) {
+        const size_t lleft = local[li].len - lo, rleft = remote[ri].len - ro;
+        const size_t n = lleft < rleft ? lleft : rleft;
+        if (n > static_cast<size_t>(INT64_MAX) - static_cast<size_t>(total)) {
+            if (total == 0) return *guest_errno() = kEINVAL, -1;
+            break;
+        }
+        if (n) {
+            auto* l = static_cast<char*>(local[li].base) + lo;
+            auto* r = static_cast<char*>(remote[ri].base) + ro;
+            SIZE_T done = 0;
+            const BOOL ok = write ? WriteProcessMemory(GetCurrentProcess(), r, l, n, &done)
+                                  : ReadProcessMemory(GetCurrentProcess(), r, l, n, &done);
+            total += static_cast<int64_t>(done);
+            if (!ok) {
+                if (total == 0) return *guest_errno() = kEFAULT, -1;
+                return total;
+            }
+        }
+        lo += n;
+        ro += n;
+        if (lo == local[li].len) ++li, lo = 0;
+        if (ro == remote[ri].len) ++ri, ro = 0;
+    }
+    return total;
+}
+WINAPK_GUEST_ABI int64_t g_process_vm_readv(int pid, const ProcessVmIovec* local, uint64_t local_n,
+                                            const ProcessVmIovec* remote, uint64_t remote_n, uint64_t flags) {
+    return process_vm_copy(pid, local, local_n, remote, remote_n, flags, false);
+}
+WINAPK_GUEST_ABI int64_t g_process_vm_writev(int pid, const ProcessVmIovec* local, uint64_t local_n,
+                                             const ProcessVmIovec* remote, uint64_t remote_n, uint64_t flags) {
+    return process_vm_copy(pid, local, local_n, remote, remote_n, flags, true);
+}
 // A sixth argument (mmap's offset) is the first one on the stack; a caller that
 // passes fewer leaves its own frame there, which is only read for the calls that have six.
 WINAPK_GUEST_ABI int64_t g_syscall(int64_t nr, int64_t a, int64_t b, int64_t c, int64_t d, int64_t e, int64_t f) {
@@ -1418,6 +1470,10 @@ WINAPK_GUEST_ABI int64_t g_syscall(int64_t nr, int64_t a, int64_t b, int64_t c, 
         case 297: return g_tgkill(static_cast<int>(a), static_cast<int>(b), static_cast<int>(c));  // rt_tgsigqueueinfo
         case 24: SwitchToThread(); return 0;  // sched_yield
         case 204: return affinity_syscall(static_cast<int>(a), static_cast<size_t>(b), reinterpret_cast<void*>(c));
+        case 310: case 311:  // process_vm_readv, process_vm_writev (x86_64's numbers)
+            return process_vm_copy(static_cast<int>(a), reinterpret_cast<const ProcessVmIovec*>(b),
+                                   static_cast<uint64_t>(c), reinterpret_cast<const ProcessVmIovec*>(d),
+                                   static_cast<uint64_t>(e), static_cast<uint64_t>(f), nr == 311);
         case 318: return g_getrandom(reinterpret_cast<void*>(a), static_cast<size_t>(b), 0);
         case 228: return g_clock_gettime(static_cast<int>(a), reinterpret_cast<GuestTimespec*>(b));
         case 28: return g_madvise(reinterpret_cast<void*>(a), static_cast<size_t>(b), static_cast<int>(c));
@@ -2136,6 +2192,8 @@ const ShimSymbol kSymbols[] = {
     WINAPK_SHIM("__system_property_set", g_property_set),
     WINAPK_SHIM("android_get_device_api_level", g_get_device_api_level),
     WINAPK_SHIM("syscall", g_syscall),
+    WINAPK_SHIM("process_vm_readv", g_process_vm_readv),
+    WINAPK_SHIM("process_vm_writev", g_process_vm_writev),
     WINAPK_SHIM("strftime_l", g_strftime),
     WINAPK_SHIM("strptime", g_strptime),
     WINAPK_SHIM("strptime_l", g_strptime),

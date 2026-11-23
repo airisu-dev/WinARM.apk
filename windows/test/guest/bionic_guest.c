@@ -14,7 +14,8 @@ typedef int wchar_t;  // 32-bit on Android
 // arm64 values: system call numbers, two of open's flags, struct stat and
 // struct epoll_event (unpacked) differ from x86_64 (src/arm64/arm64_abi.cpp).
 enum { kSysMmap = 222, kSysMunmap = 215, kSysMprotect = 226, kSysGettid = 178, kSysFutex = 98,
-       kSysSchedGetaffinity = 123, kODirectory = 040000, kODirect = 0200000 };
+       kSysSchedGetaffinity = 123, kSysProcessVmReadv = 270, kSysProcessVmWritev = 271,
+       kODirectory = 040000, kODirect = 0200000 };
 struct stat { unsigned long dev, ino; unsigned mode, nlink, uid, gid; unsigned long rdev, pad1;
               long size; int blksize, pad2; long blocks, atime, atime_ns, mtime, mtime_ns, ctime, ctime_ns;
               unsigned unused[2]; };
@@ -294,6 +295,35 @@ static void test_locale_and_syscall(void) {
           mapped && syscall(kSysMunmap, raw, 65536L) == 0 && raw[1 << 19] == 3, 0);
     check("syscall(SYS_mprotect), then SYS_munmap of the whole mapping",
           mapped && syscall(kSysMprotect, raw + 65536, 65536L, 1L) == 0 && syscall(kSysMunmap, raw, 1L << 20) == 0, 0);
+}
+
+// process_vm_readv/writev on this process: Unity's crash reporter reads the memory around each register
+// with it, and copies by hand (faulting on a register that holds 0) when the call fails with ENOSYS.
+int getpid(void);
+struct vm_iovec { void* base; unsigned long len; };
+static void test_process_vm(void) {
+    const long pid = getpid();
+    char src[16] = "0123456789abcde", dst[16] = {0};
+    struct vm_iovec local = {dst, 16}, remote = {src, 16};
+    check("process_vm_readv copies from this process",
+          syscall(kSysProcessVmReadv, pid, &local, 1L, &remote, 1L, 0L) == 16 && dst[15] == 0 && dst[9] == '9', 0);
+    remote.base = 0;
+    check("process_vm_readv of address 0 fails with EFAULT, as Linux does",
+          syscall(kSysProcessVmReadv, pid, &local, 1L, &remote, 1L, 0L) == -1 && *__errno() == 14, 0);
+    // The second of two remote segments is unmapped: the first one's bytes count.
+    char dst2[32] = {0};
+    struct vm_iovec l2 = {dst2, 32}, r2[2] = {{src, 16}, {0, 16}};
+    check("process_vm_readv returns the bytes copied before an unreadable segment",
+          syscall(kSysProcessVmReadv, pid, &l2, 1L, r2, 2L, 0L) == 16 && dst2[0] == '0' && dst2[15] == 0, 0);
+    char out[4] = "xyz";
+    struct vm_iovec lw = {out, 4}, rw = {dst, 4};
+    check("process_vm_writev copies into this process",
+          syscall(kSysProcessVmWritev, pid, &lw, 1L, &rw, 1L, 0L) == 4 && dst[1] == 'y', 0);
+    remote.base = src;
+    check("process_vm_readv of another process fails with ESRCH",
+          syscall(kSysProcessVmReadv, pid + 4, &local, 1L, &remote, 1L, 0L) == -1 && *__errno() == 3, 0);
+    check("process_vm_readv with flags fails with EINVAL",
+          syscall(kSysProcessVmReadv, pid, &local, 1L, &remote, 1L, 1L) == -1 && *__errno() == 22, 0);
 }
 
 // Pipes, eventfd, poll and epoll: the wake-up machinery of every event loop.
@@ -1963,6 +1993,7 @@ EXPORT int bionic_test(const char* dir) {
     test_threads();
     test_tls();
     test_locale_and_syscall();
+    test_process_vm();
     test_malloc_usable_size();
     test_event_fds();
     test_sockets();

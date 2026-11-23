@@ -279,6 +279,7 @@ WINAPK_GUEST_ABI int a64_munmap(void* addr, size_t len) {
 using Syscall = int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
 using Fn3 = int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t, int64_t);
 using Fn4 = int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t, int64_t, int64_t);
+using Fn6 = int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
 
 bool known_syscall(uint64_t nr) {
     switch (nr) {
@@ -289,6 +290,7 @@ bool known_syscall(uint64_t nr) {
         case 48: case 129: case 130: case 131:  // faccessat; kill, tkill, tgkill
         case 138: case 240:                     // rt_sigqueueinfo, rt_tgsigqueueinfo
         case 222: case 215: case 226:           // mmap, munmap, mprotect (mozjemalloc maps by raw call)
+        case 270: case 271:                     // process_vm_readv, process_vm_writev
             return true;
         default:
             return false;
@@ -335,6 +337,11 @@ int64_t do_syscall(uint64_t nr, const uint64_t a[6]) {
         case 130: return via(200);
         case 131: case 240: return via(234);
         case 138: return via(129);
+        case 270: case 271: {  // process_vm_readv, process_vm_writev (this process only)
+            const auto f = shim<Fn6>(nr == 270 ? "process_vm_readv" : "process_vm_writev");
+            return f(static_cast<int64_t>(a[0]), static_cast<int64_t>(a[1]), static_cast<int64_t>(a[2]),
+                     static_cast<int64_t>(a[3]), static_cast<int64_t>(a[4]), static_cast<int64_t>(a[5]));
+        }
         case 56: {  // openat: as open() for AT_FDCWD or an absolute path (the shim has no openat)
             const char* path = reinterpret_cast<const char*>(a[1]);
             if (static_cast<int>(a[0]) != -100 && !(path && path[0] == '/')) {
