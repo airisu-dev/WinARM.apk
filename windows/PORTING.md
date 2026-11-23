@@ -87,9 +87,12 @@ and at a frame-making first word after `ret`, `b` or `br`, is a function of its 
 as one with an indirect `br`; it is kept only if that settles every word. A function that
 is a call target is not joined to the functions that branch to it (a tail call).
 A library with no x18 instruction in its `.eh_frame` functions, whose ranges cover 80% or
-more of its code, is loaded unchanged: what names x18 outside them is a table in `.text`
+more of its code, is loaded unchanged only if no code outside them that a call reaches writes x18
+(the runs between the ranges are read as above; a word that follows the last return of such a function,
+or that only reads x18, does not count). What names x18 outside the ranges is then a table in `.text`
 (OpenSSL's `ecp_nistz256_precomputed`, SHA-256 constants), and OpenSSL's own assembly
-does not use x18. Code without unwind info that did clobber x18 would not be caught.
+does not use x18. Code without unwind info that no call reaches (a virtual call, a jump table) and that
+clobbers x18 would not be caught.
 `blr x18` becomes `bl thunk` (x16 may be clobbered by a call). After a `br x18` nothing
 can restore a borrowed register, so its thunk clobbers one that is dead wherever the
 branch may land: a register of x9..x17, then x8..x0, then the link register (the last

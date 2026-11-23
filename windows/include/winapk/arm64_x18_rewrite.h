@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -447,6 +448,7 @@ struct X18Plan {
     size_t unreachable = 0;        // ... no control flow reaches (a function without an indirect br)
     size_t implausible = 0;        // ... in a block that is not plausible code (a function with one)
     size_t first_suspect = 0;      // file offset of the first word counted above
+    size_t gap_code = 0;           // sites that write x18 in code read outside the unwind tables that a call reaches
     size_t exec_bytes = 0;         // the executable bytes of the file
     size_t covered_bytes = 0;      // ... of them inside .eh_frame functions
     bool ok = false;               // false: not a readable arm64 ELF file, or it has no function ranges
@@ -685,6 +687,38 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
         for (size_t i = 0; i < fns.size(); ++i) group_live[find_root(i)] |= live[i];
     };
 
+    // The functions read outside the tables that a call reaches, from the code the tables describe or from one
+    // that is itself reached: code that is called is code, which a table of constants is not.
+    std::set<uint64_t> called;
+    if (read_unwound) {
+        std::map<uint64_t, std::vector<uint64_t>> from_gap;
+        std::vector<uint64_t> work;
+        for (const ExecRange& e : code.ranges) {
+            for (uint64_t at = 0; at + 4 <= e.size; at += 4) {
+                uint32_t w;
+                std::memcpy(&w, file + e.offset + at, 4);
+                uint64_t t;
+                if (!is_bl(w) || !direct_target(w, e.vaddr + at, &t) || !unwound.count(t)) continue;
+                const size_t j = function_at(e.vaddr + at);
+                if (j == fns.size()) continue;
+                if (!unwound.count(fns[j].lo)) {
+                    if (called.insert(t).second) work.push_back(t);
+                } else {
+                    from_gap[fns[j].lo].push_back(t);
+                }
+            }
+        }
+        while (!work.empty()) {
+            const uint64_t g = work.back();
+            work.pop_back();
+            const auto it = from_gap.find(g);
+            if (it == from_gap.end()) continue;
+            for (uint64_t t : it->second) {
+                if (called.insert(t).second) work.push_back(t);
+            }
+        }
+    }
+
     std::set<uint64_t> literals;
     for (const ExecRange& e : code.ranges) {
         for (uint64_t at = 0; at + 4 <= e.size; at += 4) {
@@ -736,15 +770,37 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
                     if (ends_block(w[i])) live = false;
                 }
             }
+            // The words the function's entry reaches by following direct branches (a branch in a table that follows
+            // the last return reaches nothing, though it targets a word of the table).
+            std::vector<char> from_entry(n, 1);
+            if (no_tables) {
+                from_entry.assign(n, 0);
+                std::vector<size_t> todo{0};
+                while (!todo.empty()) {
+                    size_t i = todo.back();
+                    todo.pop_back();
+                    for (; i < n && !from_entry[i]; ++i) {
+                        from_entry[i] = 1;
+                        uint64_t t;
+                        if (!is_bl(w[i]) && direct_target(w[i], f.lo + i * 4, &t) && t >= f.lo && t < f.hi) {
+                            todo.push_back(static_cast<size_t>((t - f.lo) / 4));
+                        }
+                        if (ends_block(w[i])) break;
+                    }
+                }
+            }
             for (size_t i = 0; i < n; ++i) {
                 if (!names_x18(w[i])) continue;
                 const uint64_t va = f.lo + i * 4;
                 const uint64_t off = e.offset + (va - e.vaddr);
+                bool suspect_word = false;
                 if (literals.count(va)) {
                     ++plan.literal_data;
+                    suspect_word = true;
                     suspect(off);
                 } else if (!reach[i]) {
                     ++plan.unreachable;
+                    suspect_word = true;
                     suspect(off);
                 } else if (has_br) {
                     if (bad_before.empty()) {  // once per function: reserved-space words, blocks ending in a terminator
@@ -764,6 +820,7 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
                     const bool plausible = (term_of[i] < n || no_tables) && bad_before[last + 1] == bad_before[start_of[i]];
                     if (!plausible) {
                         ++plan.implausible;
+                        suspect_word = true;
                         suspect(off);
                     }
                 }
@@ -778,6 +835,11 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
                     uint32_t live = group_live[find_root(fi)];
                     if (!x18_table_dispatch(w.data(), i)) live |= 1u << 30 | 0x1ff;
                     site.borrow = x18_pick_borrow(live);
+                }
+                if (!suspect_word && called.count(f.lo) && from_entry[i]) {
+                    // A word that only reads x18 (a register save) does not corrupt the TEB.
+                    const X18Operands ops = x18_operands(w[i]);
+                    if (!ops.complete || (ops.write_mask >> 18 & 1)) ++plan.gap_code;
                 }
                 plan.sites.push_back(site);
             }
@@ -796,17 +858,25 @@ inline X18Plan plan_x18_sites_in(const uint8_t* file, size_t size, bool read_unw
     return plan;
 }
 
-// The plan from the unwind tables alone; when it finds words naming x18 that nothing describes (and the library is
-// not one that only keeps a table in .text), the code outside the tables is read as well, and kept if that settles
-// every word. A table in .text then still loads as it did, and a table that looks like code does not turn a
-// library that loaded into one that is refused.
+// The plan from the unwind tables alone; when it finds words naming x18 that nothing describes, the code outside the
+// tables is read as well, and kept if that settles every word. A table that looks like code does not turn a library
+// that loaded into one that is refused. A library whose tables cover most of its code and name no x18 in it keeps a
+// table in .text (x18_data_only), but only if the code outside the tables names none either: a library may leave its
+// last functions out of the tables, and the share the tables cover says nothing about those.
 inline bool x18_data_only(const X18Plan& plan);
 
 inline X18Plan plan_x18_sites(const uint8_t* file, size_t size) {
     X18Plan plan = plan_x18_sites_in(file, size, false);
-    if (!plan.ok || !plan.risky() || x18_data_only(plan)) return plan;
+    if (!plan.ok || !plan.risky()) return plan;
     X18Plan more = plan_x18_sites_in(file, size, true);
-    return more.ok && !more.risky() ? more : plan;
+    if (!more.ok) return plan;
+    if (x18_data_only(plan)) {
+        // A table of constants in .text reads as code between the tables too (OpenSSL's, in blocks that end in a
+        // branch). What a call reaches is code: that is patched if the reading settled every word, and refused (its
+        // plan is risky) if not.
+        return more.gap_code ? more : plan;
+    }
+    return more.risky() ? plan : more;
 }
 
 // A library that was scanned as using x18 but has no x18 instruction in the code the unwind tables describe: what

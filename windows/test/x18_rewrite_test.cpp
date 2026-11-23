@@ -466,6 +466,19 @@ void test_plan() {
         auto h = make_elf({kNop, kX18Mov, kRet}, {{0, 3}});
         check(!x18_data_only(plan_x18_sites(h.data(), h.size())), "plan: a site in a function");
         check(!x18_data_only(plan_x18_sites(f.data(), 16)), "plan: not an ELF file");
+        // High coverage does not make a library data-only when code outside the tables names x18: it is patched.
+        std::vector<uint32_t> tail(40, kNop);
+        tail.push_back(kRet);
+        tail[5] = 0x94000000 | 36;  // bl to the first word after the function: the code outside is called
+        for (uint32_t w : {kNop, kNop, kX18Mov, kNop, kRet, uint32_t{0}}) tail.push_back(w);
+        auto t = make_elf(tail, {{0, 41}});
+        const X18Plan tp = plan_x18_sites(t.data(), t.size());
+        check(!x18_data_only(tp), "plan: code outside the tables at high coverage is not data");
+        check_one_site(tp, 43, "plan: code outside the tables at high coverage is patched");
+        // The same words that nothing calls are a table of constants kept in .text.
+        tail[5] = kNop;
+        auto u = make_elf(tail, {{0, 41}});
+        check(x18_data_only(plan_x18_sites(u.data(), u.size())), "plan: uncalled code outside the tables is data");
     }
     // The register an indirect branch through x18 clobbers: one that nothing can still read where the branch may land.
     {
