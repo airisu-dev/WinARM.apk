@@ -3,7 +3,7 @@
 //
 // Windows has no POSIX signals, but Android code depends on them in two ways:
 //
-//   * Faults. Crash reporters (Breakpad, Crashlytics, Sentry, Unity's) install
+//   * Faults. Crash reporters (Breakpad, Crashlytics, Sentry) install
 //     SIGSEGV/SIGABRT/... handlers with sigaction and expect to run when the
 //     app crashes; managed runtimes (Mono, .NET, Dart) take SIGSEGV for their
 //     null checks and stack guards and *recover*: the handler moves pc, or
@@ -470,8 +470,8 @@ void ucontext_to_context(const GuestUcontextA64& uc, CONTEXT* c) {
 
 // The virtual x18 and the register a thunk borrows live in two slots of the thread's TEB, one set per thread. A handler
 // that interrupts a thunk runs rewritten code of its own, which overwrites them; the interrupted thunk then reads
-// the handler's values (a table pointer lost from its register, an x18 that is not the library's). Boehm's suspend
-// signal reaches Unity's loading threads in the middle of such code.
+// the handler's values (a table pointer lost from its register, an x18 that is not the library's). A suspend-style
+// signal from a garbage collector can arrive in the middle of such code.
 class VirtualX18Saved {
 public:
     VirtualX18Saved() {
@@ -868,11 +868,10 @@ void* waiting_address(uint32_t tid) {
 
 // Whether a thread stopped at `pc` can take a handler call. Code inside a system DLL that hands out the process's
 // shared locks (ntdll's heaps and loader, the WaitOnAddress hash bucket, kernel32/kernelbase, the window
-// manager's) may hold one, and a handler that waits there (Boehm's suspend handler sleeps until the restart
-// signal) keeps every other thread that needs the lock spinning, the collector's own sem_wait among them: Unity
-// never got past its first frame. A thread blocked in a system call holds none, so pc at a `svc` (or just after
-// one) is fine. Other code, the host's CRT included, takes the call: refusing it dropped signals.
-// The suspended thread may itself hold the loader lock, so the module table is read before the suspend
+// manager's) may hold one, and a handler that waits there (a collector's suspend handler sleeps until the restart
+// signal) keeps every other thread that needs the lock spinning. A thread blocked in a system call holds none, so pc
+// at a `svc` (or just after one) is fine. Other code, the host's CRT included, takes the call: refusing it dropped
+// signals. The suspended thread may itself hold the loader lock, so the module table is read before the suspend
 // (lock_dll_ranges) and the decision below is pointer comparisons only.
 struct CodeRange {
     uint64_t begin, end;
@@ -987,13 +986,11 @@ int inject(uint32_t tid, int sig) {
         }
     }
     ResumeThread(h);
-    // A thread blocked in WaitOnAddress (every futex, semaphore, condition variable and mutex wait here) takes the
-    // redirect only when that wait returns, so a signal sent to a sleeping thread never ran: Boehm's suspend signal
-    // went to a thread parked on a lock, the collector's retries piled up, and Unity's il2cpp never finished
-    // starting. WakeByAddressAll on its address ends the wait as any wake does, unlinking the waiter's wait block
-    // first; NtAlertThreadByThreadId alone left that block linked in the hash bucket on the waiter's stack, and the
-    // next wait at the same stack address made the bucket a cycle that every later WaitOnAddress spun on forever.
-    // Each wait rechecks its condition, so the other waiters on the address wake in vain.
+    // A thread asleep in WaitOnAddress (every futex, semaphore, condition variable and mutex wait here) only takes
+    // a redirect when the wait returns, so wake it by its address. WakeByAddressAll unlinks the waiter's wait block
+    // as any wake does; NtAlertThreadByThreadId alone left that block linked in the hash bucket on the waiter's
+    // stack, and the next wait at the same stack address made the bucket a cycle that every later WaitOnAddress
+    // spun on forever. Each wait rechecks its condition, so the other waiters on the address wake in vain.
     if (result == 0) {
         if (void* address = waiting_address(tid)) WakeByAddressAll(address);
     }

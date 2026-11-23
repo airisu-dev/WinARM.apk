@@ -144,8 +144,8 @@ std::string proc_maps_text() {
     return linker ? linker->proc_maps() : std::string();
 }
 
-// /proc/cpuinfo, as an arm64 kernel prints it: a block per logical processor, then the board. Unity counts its
-// cores from the "processor" lines and read none (SystemInfo.processorCount 0, no big.LITTLE split).
+// /proc/cpuinfo, as an arm64 kernel prints it: a block per logical processor, then the board. Apps count their
+// cores from the "processor" lines.
 bool is_proc_cpuinfo(const char* path) { return path && std::strcmp(path, "/proc/cpuinfo") == 0; }
 
 std::string proc_cpuinfo_text() {

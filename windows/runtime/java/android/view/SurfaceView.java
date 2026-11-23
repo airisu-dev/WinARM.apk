@@ -2731,10 +2731,8 @@ public class SurfaceView extends View implements MetalSurfaceCallbacks {
 
     private static boolean sWithholdNativeOk = true;
 
-    /** A tick that drew nothing (no renderer yet): the host must not present the
-     *  view's empty pbuffer. A native engine (Unity) renders into the window
-     *  itself, and an empty frame from here, shown whenever the engine is quiet
-     *  for half a second, would flash black over its last frame. */
+    /** A tick that drew nothing (no renderer yet): the host must not present the view's empty pbuffer, which would
+     *  flash black over the frame a native engine rendering into the window itself last drew. */
     private static void macapkWithholdTick() {
         if (!sWithholdNativeOk) return;
         try {

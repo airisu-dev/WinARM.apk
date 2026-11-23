@@ -63,11 +63,8 @@ std::string file_name_of(const std::string& name) {
 // ANSI code page on Windows.
 std::filesystem::path utf8_path(const std::string& s) { return std::filesystem::u8path(s); }
 
-// A path near MAX_PATH in its long-path (\\?\) form. This process has no
-// longPathAware manifest, and an app's library directory
-// (data\app\~~<random>==\<package>-<random>==\lib\arm64) under a long user-data
-// folder is past 260 characters for a library with a long name, where the plain
-// form reads as "not found".
+// A path in its long-path form (long_path_form says why); an app's library directory under a long user-data folder
+// can pass 260 characters.
 std::filesystem::path long_path(const std::filesystem::path& p) {
     return std::filesystem::path(long_path_form(p.native()));
 }

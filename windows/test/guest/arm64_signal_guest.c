@@ -262,7 +262,7 @@ EXPORT int sig_thread(void) {
     return g_hit && g_handler_tid == g_worker_tid && g_handler_tid != gettid() ? 1 : -2;
 }
 
-// A thread asleep in sem_wait takes the signal too: Boehm's suspend signal goes to threads parked on locks.
+// A thread asleep in sem_wait takes the signal too: a collector's suspend signal goes to threads parked on locks.
 int sem_init(void*, int, unsigned);
 int sem_wait(void*);
 int sem_post(void*);

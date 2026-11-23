@@ -238,10 +238,7 @@ std::wstring host_path_short(const char* p) {
     return g_android_root + host_names(p, len);
 }
 
-// A path near MAX_PATH in its long-path form (the \\?\ prefix). This process has no longPathAware manifest, and
-// LongPathsEnabled is off by default, so a file of an app under a long data folder failed to open with ENOENT: an
-// il2cpp resource copy (files\il2cpp\Resources\Microsoft.Extensions.Logging.Abstractions.dll-resources.dat) made
-// libunity report "Not enough storage space to install required resources".
+// A path in its long-path form (long_path_form says why the plain form fails near MAX_PATH).
 std::wstring host_path(const char* p) {
     std::wstring w = host_path_short(p);
     return w == L"NUL" ? w : winapk::long_path_form(w);

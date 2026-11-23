@@ -46,10 +46,9 @@ jint JNICALL Looper_runMainPoll(JNIEnv*, jclass, jlong nl) {
 }
 // ---- display vsync for a per-thread Choreographer -------------------------------------------------
 // AOSP's Choreographer asks its thread's Looper for ONE vsync (DisplayEventReceiver.scheduleVsync) and runs
-// doFrame when the Looper hands it back (takeVsync). Unity's "UnityChoreographer" thread is such a Choreographer,
-// and its doFrame is the only writer of the frame counter UnityMain waits on, so a vsync that never comes leaves
-// the game on its first screen. One timer thread, running only while a request is pending, answers every request
-// at the display's rate; the Display class reports 60 Hz, so that is the interval.
+// doFrame when the Looper hands it back (takeVsync); a game engine with its own Choreographer thread makes no
+// progress without it. One timer thread, running only while a request is pending, answers every request on a
+// fixed grid at the display's rate (the Display class reports 60 Hz).
 constexpr int64_t kVsyncIntervalNs = 1000000000LL / 60;
 
 struct VsyncSlot {

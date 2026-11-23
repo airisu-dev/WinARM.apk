@@ -967,13 +967,9 @@ public class Application extends ContextWrapper
         return apkPath != null ? macapkAndroidPath(apkPath) : "";
     }
 
-    /** Win.apk: the Android spelling of a file under the android root
-     *  (/data/app/~~h/pkg-h/base.apk), which the host maps back. Unity's native
-     *  player routes "code path"/assets/... to its own index of the APK only for
-     *  a path that starts with '/'; given C:\...\base.apk it stat()s the entry as
-     *  a plain file and fails (unity_app_guid, il2cpp metadata). Only the two
-     *  getters use it: sourceDir stays the host file the ELF and dex loaders
-     *  open. A path outside the root is returned as it is. */
+    /** The Android spelling of a file under the android root (/data/app/~~h/pkg-h/base.apk), which the host maps
+     *  back. Native players index the APK only for a path that starts with '/'. Only the two code-path getters use
+     *  it: sourceDir stays the host file the ELF and dex loaders open. A path outside the root is returned as is. */
     private static String macapkAndroidPath(String host) {
         String root = System.getProperty("winapk.android.root");
         if (root == null || host == null) return host;
@@ -994,18 +990,11 @@ public class Application extends ContextWrapper
     }
     private volatile AppFacing appFacing;
 
-    /** Win.apk: what the app itself is told. The record the runtime's own loaders
-     *  use keeps host paths; the app's copy names the split APKs by their Android
-     *  paths, as getPackageCodePath() names the base. Unity builds each split's
-     *  assets path from the code path's folder and file name, so it finds a split
-     *  in its APK index only if it was registered under that same spelling.
-     *  No lock: this is hot, and the Application's monitor is the app's to take
-     *  (a thread holding it while waiting on a caller of this would deadlock).
-     *  Two threads may each build an equal copy; the last write wins.
-     *  One rule whatever the install (splits or none): the app always gets the
-     *  same copy for as long as the runtime's record is the same object, so its
-     *  identity is stable, and what the app writes into it never reaches the
-     *  runtime's record. A null split list stays null. */
+    /** What the app itself is told: the runtime's own record keeps host paths, the app's copy names the split APKs
+     *  by their Android paths, as getPackageCodePath() names the base, so a native player's per-split lookups agree.
+     *  No lock: this is hot, and the Application's monitor is the app's to take. Two threads may each build an equal
+     *  copy; the last write wins. The app gets the same copy for as long as the runtime's record is the same
+     *  object, and what it writes into it never reaches the runtime's record. A null split list stays null. */
     private android.content.pm.ApplicationInfo macapkAppFacingInfo() {
         android.content.pm.ApplicationInfo real = macapkApplicationInfoReal();
         if (real == null) return null;

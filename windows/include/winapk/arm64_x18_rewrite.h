@@ -480,8 +480,8 @@ inline std::vector<uint64_t> x18_call_targets(const uint8_t* file, const ElfCode
     return calls;
 }
 
-// Code a library keeps outside its unwind tables (a statically linked library built without them: Unity's physics
-// and math code) is taken as functions of its own: the runs of words between the .eh_frame ranges that contain no
+// Code a library keeps outside its unwind tables (a statically linked library built without them) is taken as
+// functions of its own: the runs of words between the .eh_frame ranges that contain no
 // reserved word (zero padding, the udf space) and no string (three printable-ASCII words in a row; one or two such
 // words are instructions now and then). A run is cut where a call lands, which is a function start, and at a
 // frame-making first word after a branch that ends a block. Each is read like a function with an indirect branch, since
@@ -899,9 +899,8 @@ inline X18Plan plan_x18_sites(const uint8_t* file, size_t size) {
     X18Plan more = plan_x18_sites_in(file, size, true);
     if (!more.ok) return plan;
     if (x18_data_only(plan)) {
-        // A table of constants in .text reads as code between the tables too (OpenSSL's, in blocks that end in a
-        // branch). What a call reaches is code: that is patched if the reading settled every word, and refused (its
-        // plan is risky) if not.
+        // A table of constants in .text reads as code between the tables too (see x18_data_only). What a call
+        // reaches is code: that is patched if the reading settled every word, and refused (its plan is risky) if not.
         return more.gap_code ? more : plan;
     }
     return more.risky() ? plan : more;
