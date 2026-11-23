@@ -164,6 +164,14 @@ An app assumes a POSIX filesystem. One table decides where a guest path lives
 under `%LOCALAPPDATA%\Win.apk\android`. File names with characters NTFS
 forbids are escaped.
 
+The APK is the one file an app is told by its Android name:
+`getPackageCodePath()` is `/data/app/~~<h>/<pkg>-<h>/base.apk`, while
+`ApplicationInfo.sourceDir` stays the host path the ELF and dex loaders open.
+Unity's player indexes the APK with `fopen`/`fseek`/`fread` and serves
+`<code path>/assets/...` from that index only when the path starts with `/`;
+with a drive-letter path it `stat`s the entry as a plain file, so
+`unity_app_guid` and il2cpp's `global-metadata.dat` could not be read.
+
 ## 5. Upstream behaviour the port preserves
 
 - `com.macapk.loader.AppClassLoader.findLibrary` is the single funnel for

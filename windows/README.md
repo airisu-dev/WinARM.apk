@@ -921,6 +921,18 @@ under `runtime/`):
   `mClassLoader` field of AOSP `ContextImpl`, and `getClassLoader` returns it
   when set; Chromium sets it reflectively for isolated splits
   (`MACAPK_CONTEXT_MCLASSLOADER=0` ignores it). Not Windows-specific.
+- `runtime/java/android/app/Application.java` (`macapkCodePath`): `getPackageCodePath()`
+  and `getPackageResourcePath()` answer the Android spelling of the installed APK
+  (`/data/app/~~<h>/<pkg>-<h>/base.apk`, which the shim and `WinApkPaths` map back)
+  when it lies under the android root. Unity's native player reads
+  `<code path>/assets/...` (`unity_app_guid`, il2cpp's `global-metadata.dat`) from
+  its own index of the APK only for a path that starts with `/`; given
+  `C:\...\base.apk` it opened the entry as a plain file and the app crashed in
+  il2cpp. `ApplicationInfo.sourceDir` stays a host path. Windows-specific.
+  The record `getApplicationInfo()` hands the app (not the runtime's own loaders)
+  names the split APKs (`splitSourceDirs`, `splitPublicSourceDirs`) by their Android
+  paths too: Unity builds a split's `<path>/assets/...` from the code path's folder
+  and indexes it only under that spelling.
 - `runtime/java/android/app/Application.java`, `Activity.java` and
   `com/macapk/loader/ActivityHost.java`: `onActivityPreCreated` goes out before
   `onCreate`, `onActivityCreated` from `Activity.onCreate` (or after it when

@@ -233,7 +233,7 @@ public class Application extends ContextWrapper
         // subclass may override these getters and delegate back to its base.
         // Calling app.getXxx() here would re-enter that override and recurse.
         // Public Application getters remain overridable for app-facing calls.
-        @Override public android.content.pm.ApplicationInfo getApplicationInfo() { return app.macapkApplicationInfoReal(); }
+        @Override public android.content.pm.ApplicationInfo getApplicationInfo() { return app.macapkAppFacingInfo(); }
         @Override public PackageManager getPackageManager() { return app.macapkPackageManagerReal(); }
         // Serve from the REAL provider, NOT app.getSharedPreferences: an app that
         // overrides getSharedPreferences and delegates back to its base context
@@ -961,10 +961,55 @@ public class Application extends ContextWrapper
         try {
             android.content.pm.ApplicationInfo ai = macapkApplicationInfoReal();
             if (ai != null && ai.sourceDir != null && !ai.sourceDir.isEmpty()) {
-                return ai.sourceDir;
+                return macapkAndroidPath(ai.sourceDir);
             }
         } catch (Throwable ignored) {}
-        return apkPath != null ? apkPath : "";
+        return apkPath != null ? macapkAndroidPath(apkPath) : "";
+    }
+
+    /** Win.apk: the Android spelling of a file under the android root
+     *  (/data/app/~~h/pkg-h/base.apk), which the host maps back. Unity's native
+     *  player routes "code path"/assets/... to its own index of the APK only for
+     *  a path that starts with '/'; given C:\...\base.apk it stat()s the entry as
+     *  a plain file and fails (unity_app_guid, il2cpp metadata). Only the two
+     *  getters use it: sourceDir stays the host file the ELF and dex loaders
+     *  open. A path outside the root is returned as it is. */
+    private static String macapkAndroidPath(String host) {
+        String root = System.getProperty("winapk.android.root");
+        if (root == null || host == null) return host;
+        String h = host.replace('\\', '/');
+        String r = root.replace('\\', '/');
+        if (!r.endsWith("/")) r += "/";
+        return h.regionMatches(true, 0, r, 0, r.length()) ? "/" + h.substring(r.length()) : host;
+    }
+
+    private android.content.pm.ApplicationInfo appFacingFor, appFacing;
+
+    /** Win.apk: what the app itself is told. The record the runtime's own loaders
+     *  use keeps host paths; the app's copy names the split APKs by their Android
+     *  paths, as getPackageCodePath() names the base. Unity builds each split's
+     *  assets path from the code path's folder and file name, so it finds a split
+     *  in its APK index only if it was registered under that same spelling. */
+    private android.content.pm.ApplicationInfo macapkAppFacingInfo() {
+        android.content.pm.ApplicationInfo real = macapkApplicationInfoReal();
+        if (real == null || real.splitSourceDirs == null) return real;
+        synchronized (this) {
+            if (appFacingFor != real) {
+                android.content.pm.ApplicationInfo copy = new android.content.pm.ApplicationInfo(real);
+                copy.splitSourceDirs = macapkAndroidPaths(real.splitSourceDirs);
+                copy.splitPublicSourceDirs = macapkAndroidPaths(real.splitPublicSourceDirs);
+                appFacing = copy;
+                appFacingFor = real;
+            }
+            return appFacing;
+        }
+    }
+
+    private static String[] macapkAndroidPaths(String[] host) {
+        if (host == null) return null;
+        String[] out = new String[host.length];
+        for (int i = 0; i < out.length; i++) out[i] = macapkAndroidPath(host[i]);
+        return out;
     }
     @Override public PackageManager getPackageManager() {
         Context d = macapkUninitDelegate();
@@ -1025,7 +1070,7 @@ public class Application extends ContextWrapper
 
     @Override
     public android.content.pm.ApplicationInfo getApplicationInfo() {
-        return macapkApplicationInfoReal();
+        return macapkAppFacingInfo();
     }
 
     /** The body of getApplicationInfo(), reached through OUR PackageManager
