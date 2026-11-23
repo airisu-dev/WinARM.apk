@@ -188,6 +188,26 @@ EXPORT int sig_raise(void) {
 EXPORT int sig_raise_code(void) { return g_code; }
 EXPORT int sig_mask_blocked(void) { return g_mask_blocked; }
 
+// The raw forms of the same calls, by syscall(): the ones a crash reporter ends its handler with
+// (rt_tgsigqueueinfo, to put the fault's signal back for the handler it replaced).
+long syscall(long, ...);
+int getpid(void);
+enum { SYS_RT_SIGQUEUEINFO = 138, SYS_TKILL = 130, SYS_TGKILL = 131, SYS_RT_TGSIGQUEUEINFO = 240 };
+EXPORT int sig_raw_calls(void) {
+    const long pid = getpid(), tid = gettid();
+    siginfo none = {0};
+    int ok = 1;
+    install(SIGUSR1, on_usr1, SA_SIGINFO);
+    g_count = 0;
+    ok &= syscall(SYS_RT_TGSIGQUEUEINFO, pid, tid, SIGUSR1, &none) == 0 && g_count == 1;
+    ok &= syscall(SYS_TGKILL, pid, tid, SIGUSR1) == 0 && g_count == 2;
+    ok &= syscall(SYS_TKILL, tid, SIGUSR1) == 0 && g_count == 3;
+    ok &= syscall(SYS_RT_SIGQUEUEINFO, pid, SIGUSR1, &none) == 0 && g_count == 4;
+    ok &= syscall(SYS_RT_TGSIGQUEUEINFO, pid + 1, tid, SIGUSR1, &none) == -1 && g_count == 4;  // not this process
+    uninstall(SIGUSR1);
+    return ok ? 1 : -1;
+}
+
 // ---- the alternate stack -----------------------------------------------------------------------------
 
 static char g_alt[65536] __attribute__((aligned(16)));

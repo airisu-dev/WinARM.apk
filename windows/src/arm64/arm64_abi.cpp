@@ -272,9 +272,9 @@ WINAPK_GUEST_ABI int a64_munmap(void* addr, size_t len) {
 // arm64 uses asm-generic's (futex 98, gettid 178...): an arm64 library's
 // syscall(SYS_futex, ...) named another call. Both its syscall() import and
 // its raw SVCs come here, are renumbered for the shim, and a few calls the
-// shim's syscall() does not take go to its libc functions. The signal calls
-// answer 0, as the shim's sigaction() family does: there are no guest
-// signals yet.
+// shim's syscall() does not take go to its libc functions. The calls that
+// only set up signals (sigaltstack, rt_sigaction, rt_sigprocmask) answer 0;
+// the shim's sigaction() family does the real work.
 
 using Syscall = int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t, int64_t, int64_t, int64_t, int64_t);
 using Fn3 = int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t, int64_t);
@@ -287,6 +287,7 @@ bool known_syscall(uint64_t nr) {
         case 56: case 57: case 62: case 63: case 64: case 79: case 80: case 93: case 94:  // via libc functions
         case 96: case 132: case 134: case 135: case 167:
         case 48: case 129: case 130: case 131:  // faccessat; kill, tkill, tgkill
+        case 138: case 240:                     // rt_sigqueueinfo, rt_tgsigqueueinfo
         case 222: case 215: case 226:           // mmap, munmap, mprotect (mozjemalloc maps by raw call)
             return true;
         default:
@@ -325,11 +326,15 @@ int64_t do_syscall(uint64_t nr, const uint64_t a[6]) {
             const auto f = shim<int64_t(WINAPK_GUEST_ABI*)(int64_t, int64_t)>("kill");
             return f(static_cast<int64_t>(a[0]), static_cast<int64_t>(a[1]));
         }
-        // tkill(tid, sig), tgkill(tgid, tid, sig): the threads are this
-        // process's own, and no signal is delivered on Windows (sigaction
-        // records handlers, it does not install them); signal 0, the check
-        // that a thread is alive, is the common use and is answered yes.
-        case 130: case 131: return 0;
+        // tkill(tid, sig), tgkill(tgid, tid, sig) and the queueing forms
+        // rt_tgsigqueueinfo(tgid, tid, sig, info) and rt_sigqueueinfo(pid, sig, info): signals to this
+        // process's own threads, delivered as the shim's tkill, tgkill and kill do (signal.cpp). The info
+        // is dropped: the handler sees si_code SI_TKILL, not the caller's. A crash reporter ends its
+        // handler by queueing the fault's signal again with the old action restored, and exits when the
+        // call fails.
+        case 130: return via(200);
+        case 131: case 240: return via(234);
+        case 138: return via(129);
         case 56: {  // openat: as open() for AT_FDCWD or an absolute path (the shim has no openat)
             const char* path = reinterpret_cast<const char*>(a[1]);
             if (static_cast<int>(a[0]) != -100 && !(path && path[0] == '/')) {

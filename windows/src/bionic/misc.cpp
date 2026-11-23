@@ -1414,6 +1414,8 @@ WINAPK_GUEST_ABI int64_t g_syscall(int64_t nr, int64_t a, int64_t b, int64_t c, 
         case 39: return g_getpid();
         case 200: return g_tkill(static_cast<int>(a), static_cast<int>(b));
         case 234: return g_tgkill(static_cast<int>(a), static_cast<int>(b), static_cast<int>(c));
+        case 129: return g_kill(static_cast<int>(a), static_cast<int>(b));  // rt_sigqueueinfo (x86_64)
+        case 297: return g_tgkill(static_cast<int>(a), static_cast<int>(b), static_cast<int>(c));  // rt_tgsigqueueinfo
         case 24: SwitchToThread(); return 0;  // sched_yield
         case 204: return affinity_syscall(static_cast<int>(a), static_cast<size_t>(b), reinterpret_cast<void*>(c));
         case 318: return g_getrandom(reinterpret_cast<void*>(a), static_cast<size_t>(b), 0);

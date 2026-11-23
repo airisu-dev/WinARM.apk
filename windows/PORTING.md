@@ -218,6 +218,15 @@ with a drive-letter path it `stat`s the entry as a plain file, so
   loader lock). The retry is bounded to 10 ms; a signal still dropped (EAGAIN)
   is noted once on stderr. A handler that waits keeps the outer wait wakeable
   (`wait_on_address` restores the address it found).
+- Raw signal calls an arm64 library makes (`syscall()` or `svc`: tkill, tgkill,
+  rt_sigqueueinfo, rt_tgsigqueueinfo) deliver as the shim's `tkill`, `tgkill`
+  and `kill` do, to this process only; the queued `siginfo` is dropped, so the
+  handler sees `SI_TKILL`. A crash reporter's handler (Crashlytics) ends by
+  queueing the fault's signal again with the old action restored, and calls
+  `_exit(191)` when that call fails: before these were answered it showed up
+  as "guest called _exit(191)" after a `fork()` that failed with ENOSYS (the
+  reporter starts its crash-handler process first and carries on without it), and
+  hid the app's own fault.
 - A per-thread Choreographer is driven by a 60 Hz timer through
   `NativeLooper.scheduleVsync`/`takeVsync` (`host/native_looper.cpp`); Unity's
   "UnityChoreographer" thread paces `UnityMain` with it. `/proc/cpuinfo` is
