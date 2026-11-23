@@ -211,8 +211,13 @@ with a drive-letter path it `stat`s the entry as a plain file, so
   `WakeByAddressAll` on the address the thread waits on (`wait_on_address`):
   `NtAlertThreadByThreadId` leaves the waiter's wait block linked in the
   WaitOnAddress hash bucket, and the next wait at that stack address turned the
-  bucket into a cycle every later wait spun on. A thread inside a Windows DLL's
-  code (not at a `svc`) is not redirected, since it may hold the DLL's lock.
+  bucket into a cycle every later wait spun on. A thread inside ntdll, kernel32,
+  kernelbase, win32u or user32 (not at a `svc`) is not redirected, since it may
+  hold a lock the handler would stall; other code, the host CRT included, is.
+  The module table is read before the target is suspended (it may hold the
+  loader lock). The retry is bounded to 10 ms; a signal still dropped (EAGAIN)
+  is noted once on stderr. A handler that waits keeps the outer wait wakeable
+  (`wait_on_address` restores the address it found).
 - A per-thread Choreographer is driven by a 60 Hz timer through
   `NativeLooper.scheduleVsync`/`takeVsync` (`host/native_looper.cpp`); Unity's
   "UnityChoreographer" thread paces `UnityMain` with it. `/proc/cpuinfo` is

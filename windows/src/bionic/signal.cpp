@@ -54,6 +54,7 @@
 #include "winapk/linker.h"
 #include "winapk/mini_bionic.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdio>
@@ -61,8 +62,10 @@
 #include <cstring>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
 #include <windows.h>
+#include <psapi.h>
 
 namespace winapk::bionic {
 
@@ -863,21 +866,54 @@ void* waiting_address(uint32_t tid) {
     return it == g_waits.end() ? nullptr : it->second->address.load();
 }
 
-// Whether a thread stopped at `pc` can take a handler call. Code inside a Windows system DLL may hold one of
-// its locks (the hash bucket of WaitOnAddress, a heap's), and a handler that waits there (Boehm's suspend handler
-// sleeps until the restart signal) keeps every other thread that needs the lock spinning, the collector's own
-// sem_wait among them: Unity never got past its first frame. A thread blocked in a system call holds none, so
-// pc at a `svc` (or just after one) is fine.
-bool safe_to_redirect(uint64_t pc) {
-    HMODULE module = nullptr;
-    if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            reinterpret_cast<LPCWSTR>(pc), &module)) {
-        return true;  // guest code, or code the host generated
+// Whether a thread stopped at `pc` can take a handler call. Code inside a system DLL that hands out the process's
+// shared locks (ntdll's heaps and loader, the WaitOnAddress hash bucket, kernel32/kernelbase, the window
+// manager's) may hold one, and a handler that waits there (Boehm's suspend handler sleeps until the restart
+// signal) keeps every other thread that needs the lock spinning, the collector's own sem_wait among them: Unity
+// never got past its first frame. A thread blocked in a system call holds none, so pc at a `svc` (or just after
+// one) is fine. Other code, the host's CRT included, takes the call: refusing it dropped signals.
+// The suspended thread may itself hold the loader lock, so the module table is read before the suspend
+// (lock_dll_ranges) and the decision below is pointer comparisons only.
+struct CodeRange {
+    uint64_t begin, end;
+};
+
+bool lock_holding_dll(const wchar_t* file, const wchar_t* system, UINT system_len) {
+    if (_wcsnicmp(file, system, system_len) != 0) return false;
+    const wchar_t* name = wcsrchr(file, L'\\');
+    name = name ? name + 1 : file;
+    for (const wchar_t* dll : {L"ntdll.dll", L"kernel32.dll", L"kernelbase.dll", L"win32u.dll", L"user32.dll"}) {
+        if (_wcsicmp(name, dll) == 0) return true;
     }
-    wchar_t file[MAX_PATH], system[MAX_PATH];
+    return false;
+}
+
+std::vector<CodeRange> lock_dll_ranges() {
+    std::vector<CodeRange> ranges;
+    wchar_t system[MAX_PATH];
     const UINT n = GetSystemWindowsDirectoryW(system, MAX_PATH);
-    const DWORD m = GetModuleFileNameW(module, file, MAX_PATH);
-    if (n == 0 || n >= MAX_PATH || m == 0 || m >= MAX_PATH || _wcsnicmp(file, system, n) != 0) return true;
+    if (n == 0 || n >= MAX_PATH) return ranges;
+    HMODULE modules[1024];
+    DWORD needed = 0;
+    HANDLE self = GetCurrentProcess();
+    if (!K32EnumProcessModules(self, modules, sizeof(modules), &needed)) return ranges;
+    const size_t count = std::min<size_t>(needed / sizeof(HMODULE), sizeof(modules) / sizeof(HMODULE));
+    for (size_t i = 0; i < count; ++i) {
+        wchar_t file[MAX_PATH];
+        MODULEINFO info{};
+        const DWORD m = K32GetModuleFileNameExW(self, modules[i], file, MAX_PATH);
+        if (m == 0 || m >= MAX_PATH || !lock_holding_dll(file, system, n)) continue;
+        if (!K32GetModuleInformation(self, modules[i], &info, sizeof(info))) continue;
+        const uint64_t base = reinterpret_cast<uint64_t>(info.lpBaseOfDll);
+        ranges.push_back({base, base + info.SizeOfImage});
+    }
+    return ranges;
+}
+
+bool safe_to_redirect(const std::vector<CodeRange>& lock_dlls, uint64_t pc) {
+    bool inside = false;
+    for (const CodeRange& r : lock_dlls) inside |= pc >= r.begin && pc < r.end;
+    if (!inside) return true;  // guest code, code the host generated, or a DLL that holds no shared lock
     for (const uint64_t at : {pc - 4, pc}) {
         uint32_t word = 0;
         std::memcpy(&word, reinterpret_cast<const void*>(at), sizeof(word));
@@ -885,7 +921,8 @@ bool safe_to_redirect(uint64_t pc) {
     }
     return false;
 }
-constexpr int kRedirectAttempts = 200;
+// Wall-clock, not attempts: Sleep(1) lasts a timer tick (about 15 ms by default).
+constexpr double kRedirectBudgetMs = 10.0;
 
 // The target's registers are parked below its stack pointer and it resumes in the stub.
 // AAPCS64 has no red zone, so the parked copy sits right under sp.
@@ -902,7 +939,11 @@ int inject(uint32_t tid, int sig) {
     }
     int result = 0;
     alignas(16) CONTEXT ctx;
-    bool have_context = false;
+    bool have_context = false, safe = false;
+    const std::vector<CodeRange> lock_dlls = lock_dll_ranges();  // never while the target is suspended
+    LARGE_INTEGER freq, start;
+    QueryPerformanceFrequency(&freq);
+    QueryPerformanceCounter(&start);
     for (int attempt = 0;; ++attempt) {
         if (SuspendThread(h) == static_cast<DWORD>(-1)) {
             CloseHandle(h);
@@ -911,12 +952,20 @@ int inject(uint32_t tid, int sig) {
         std::memset(&ctx, 0, sizeof(ctx));
         ctx.ContextFlags = CONTEXT_FULL;
         have_context = GetThreadContext(h, &ctx) != 0;
-        if (!have_context || safe_to_redirect(ctx.Pc) || attempt == kRedirectAttempts) break;
+        safe = have_context && safe_to_redirect(lock_dlls, ctx.Pc);
+        LARGE_INTEGER now;
+        QueryPerformanceCounter(&now);
+        if (!have_context || safe ||
+            (now.QuadPart - start.QuadPart) * 1000.0 / freq.QuadPart >= kRedirectBudgetMs) break;
         ResumeThread(h);
         Sleep(attempt < 16 ? 0 : 1);  // the thread is inside a system call's code: let it leave
     }
-    if (!have_context || !safe_to_redirect(ctx.Pc)) {
+    if (!safe) {
         result = kEAGAIN;
+        static std::once_flag dropped;
+        if (have_context) {
+            std::call_once(dropped, [] { note("[win.apk] a signal to a thread inside a system DLL was dropped (EAGAIN)\n"); });
+        }
     } else {
         const uint64_t slot = (ctx.Sp - sizeof(CONTEXT)) & ~uint64_t{15};
         const uint64_t new_sp = slot - 16;  // two words: the signal, and the parked CONTEXT's address
